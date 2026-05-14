@@ -1,0 +1,69 @@
+{
+  "year": 2024,
+  "country": "UK",
+  "paye": {
+    "personalAllowance": 12570,
+    "personalAllowanceTaperThreshold": 100000,
+    "bands": [
+      { "name": "Personal Allowance", "min": 0,     "max": 12570,  "rate": 0.00 },
+      { "name": "Basic Rate",         "min": 12570, "max": 50270,  "rate": 0.20 },
+      { "name": "Higher Rate",        "min": 50270, "max": 125140, "rate": 0.40 },
+      { "name": "Additional Rate",    "min": 125140,"max": null,   "rate": 0.45 }
+    ],
+    "scotland": {
+      "bands": [
+        { "name": "Personal Allowance",  "min": 0,     "max": 12570,  "rate": 0.00 },
+        { "name": "Starter Rate",        "min": 12570, "max": 14732,  "rate": 0.19 },
+        { "name": "Scottish Basic Rate", "min": 14732, "max": 25688,  "rate": 0.20 },
+        { "name": "Intermediate Rate",   "min": 25688, "max": 43662,  "rate": 0.21 },
+        { "name": "Higher Rate",         "min": 43662, "max": 75000,  "rate": 0.42 },
+        { "name": "Advanced Rate",       "min": 75000, "max": 125140, "rate": 0.45 },
+        { "name": "Top Rate",            "min": 125140,"max": null,   "rate": 0.48 }
+      ]
+    }
+  },
+  "nationalInsurance": {
+    "employeeClass1": {
+      "primaryThreshold": 12570,
+      "upperEarningsLimit": 50270,
+      "rate": 0.08,
+      "upperRate": 0.02
+    },
+    "employerClass1": {
+      "secondaryThreshold": 9100,
+      "rate": 0.138
+    },
+    "selfEmployedClass4": {
+      "lowerProfitsLimit": 12570,
+      "upperProfitsLimit": 50270,
+      "rate": 0.09,
+      "upperRate": 0.02
+    },
+    "selfEmployedClass2": {
+      "smallProfitsThreshold": 6725,
+      "weeklyRate": 3.45
+    }
+  },
+  "studentLoan": {
+    "plan1": { "threshold": 22015, "rate": 0.09 },
+    "plan2": { "threshold": 27295, "rate": 0.09 },
+    "plan4": { "threshold": 27660, "rate": 0.09 },
+    "plan5": { "threshold": 25000, "rate": 0.09 },
+    "postgraduate": { "threshold": 21000, "rate": 0.06 }
+  },
+  "pension": {
+    "autoEnrollmentMinEmployeeRate": 0.05,
+    "autoEnrollmentMinEmployerRate": 0.03,
+    "annualAllowance": 60000
+  },
+  "regions": {
+    "england": { "name": "England", "useScottishRates": false },
+    "scotland": { "name": "Scotland", "useScottishRates": true },
+    "wales": { "name": "Wales", "useScottishRates": false },
+    "northern_ireland": { "name": "Northern Ireland", "useScottishRates": false }
+  },
+  "taxYear": {
+    "start": "2024-04-06",
+    "end": "2025-04-05"
+  }
+}
