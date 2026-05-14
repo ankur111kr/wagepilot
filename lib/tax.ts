@@ -182,8 +182,9 @@ export function getUKIncomeTax(
       .slice(-1)[0]?.rate ?? 0
 
   return { tax, breakdown, marginalRate }
-        }
-      /** Calculate UK National Insurance (Employee Class 1) */
+}
+
+/** Calculate UK National Insurance (Employee Class 1) */
 export function getUKNationalInsurance(
   grossIncome: number,
   taxData: UKTaxData
@@ -397,6 +398,7 @@ export function calculateContractor(input: ContractorInput, taxData: USTaxData):
     quarterlyEstimatedTax: totalTaxBurden / 4,
   }
 }
+
 // ─── Utility Helpers ──────────────────────────────────────────────────────────
 
 function buildPerPaycheckBreakdown(netAnnual: number, grossAnnual: number): PerPaycheckBreakdown {
@@ -450,5 +452,4 @@ export function getPayFrequencyDivisor(frequency: string): number {
     hourly: 2080,
   }
   return map[frequency] ?? 12
-    }
-  
+}
