@@ -30,6 +30,6 @@
     }
   ],
   "env": {
-    "NEXT_PUBLIC_SITE_URL": "https://wagepilot.com"
+    "NEXT_PUBLIC_SITE_URL": "https://wagepilot.vercel.app"
   }
 }
