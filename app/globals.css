@@ -1,123 +1,28 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 8%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
-    --radius: 0.75rem;
-    --wp-glass: rgba(255, 255, 255, 0.7);
-    --wp-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
-  }
-  .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 221 83% 58%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 217 33% 12%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 14%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 15%;
-    --input: 217 33% 15%;
-    --ring: 221 83% 58%;
-    --wp-glass: rgba(15, 20, 40, 0.7);
-    --wp-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-  }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@layer base {
-  * { @apply border-border; }
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: 'rlig' 1, 'calt' 1;
-  }
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-sora), sans-serif;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-@layer utilities {
-  .font-sora { font-family: var(--font-sora), sans-serif; }
-  .font-inter { font-family: var(--font-inter), sans-serif; }
-
-  .glass {
-    background: var(--wp-glass);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-  }
-  .dark .glass {
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .gradient-text {
-    @apply bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 bg-clip-text text-transparent;
-  }
-
-  .wp-card {
-    @apply rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md;
-  }
-  .wp-card-glass {
-    @apply rounded-2xl glass shadow-md;
-  }
-
-  .hero-gradient {
-    background: radial-gradient(ellipse 80% 60% at 50% -10%, hsl(var(--primary) / 0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 50%, hsl(142 76% 36% / 0.08), transparent),
-                hsl(var(--background));
-  }
-  .dark .hero-gradient {
-    background: radial-gradient(ellipse 80% 60% at 50% -10%, hsl(var(--primary) / 0.2), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 50%, hsl(142 76% 36% / 0.1), transparent),
-                hsl(var(--background));
-  }
-
-  .ad-container {
-    @apply flex items-center justify-center overflow-hidden rounded-lg bg-muted/50 text-xs text-muted-foreground;
-  }
-
-  input[type='number']::-webkit-inner-spin-button,
-  input[type='number']::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
-.skeleton {
-  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--border)) 50%, hsl(var(--muted)) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+
+input[type='range'] {
+  accent-color: #3b82f6;
+}
+
+a {
+  transition: opacity 0.15s;
 }
