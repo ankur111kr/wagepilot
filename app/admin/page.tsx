@@ -674,3 +674,4 @@ export default function AdminPage() {
     </div>
   )
 }
+// FAQ management is already included in the admin panel above
