@@ -1,110 +1,119 @@
-import { UKSalaryCalculator } from '@/components/calculators/UKSalaryCalculator'
-import { loadUKTaxData } from '@/lib/tax'
-import { generateCalculatorSchema, generateFAQSchema, generateBreadcrumbSchema } from '@/lib/schema'
-import { AdSlot } from '@/components/ads/AdSlot'
-import { FAQSection } from '@/components/home/FAQSection'
-import type { Metadata } from 'next'
-import type { FAQItem } from '@/types'
-
-export const metadata: Metadata = {
-  title: 'UK Income Tax Calculator 2025/26 – PAYE Take-Home Pay | WagePilot',
-  description:
-    'Free UK salary calculator for 2025/26 tax year. Calculate take-home pay after income tax, National Insurance, pension, and student loan repayments. Scotland rates included.',
-  alternates: { canonical: '/uk-income-tax-calculator' },
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { SharedNav } from '@/components/layout/SharedNav'
+import { SharedFooter } from '@/components/layout/SharedFooter'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+function calcUK(gross:number,region:string,pension:number,studentLoan:string){
+  const pa=Math.max(0,gross>100000?12570-Math.floor((gross-pension*gross/100-100000)/2):12570)
+  const grossAfter=gross-Math.round(gross*pension/100)
+  const taxable=Math.max(0,grossAfter-pa)
+  let it=0
+  if(region==='scotland'){const b:any=[[2351,.19],[13120,.20],[17622,.21],[31337,.42],[50140,.45],[Infinity,.48]];let r=taxable;for(const[band,rate]of b){if(r<=0)break;it+=Math.min(r,band)*rate;r-=band}}
+  else{it=Math.min(taxable,37700)*.20+Math.max(0,Math.min(taxable-37700,87440))*.40+Math.max(0,taxable-125140)*.45}
+  let ni=0;if(gross>12570){ni=Math.min(gross-12570,37700)*.08+Math.max(0,gross-50270)*.02}
+  const slP:any={plan1:[24990,.09],plan2:[27295,.09],plan4:[31395,.09],plan5:[25000,.09],postgrad:[21000,.06]}
+  let sl=0;if(studentLoan!=='none'&&slP[studentLoan]){const[t,r]=slP[studentLoan];sl=Math.max(0,gross-t)*r}
+  const pen=Math.round(gross*pension/100)
+  const total=Math.round(it)+Math.round(ni)+pen+Math.round(sl)
+  const mr=taxable>125140?(region==='scotland'?48:45):taxable>37700?(region==='scotland'?42:40):20
+  return{incomeTax:Math.round(it),ni:Math.round(ni),pension:pen,studentLoan:Math.round(sl),net:gross-total,total,effectiveRate:gross>0?(total/gross*100).toFixed(1):'0',marginalRate:mr,personalAllowance:pa,taxableIncome:Math.round(taxable),monthly:Math.round((gross-total)/12),weekly:Math.round((gross-total)/52)}
 }
-
-const faqs: FAQItem[] = [
-  {
-    question: 'What is the personal allowance for 2025/26?',
-    answer:
-      'The personal allowance for the 2025/26 tax year is £12,570. This is the amount you can earn before paying any income tax. It begins to taper for incomes above £100,000 and is fully withdrawn at £125,140.',
-  },
-  {
-    question: 'How much National Insurance do I pay in 2025?',
-    answer:
-      'Employees pay 8% National Insurance on earnings between £12,570 and £50,270 per year, and 2% on earnings above that. Employers pay an additional 13.8% on earnings above £9,100.',
-  },
-  {
-    question: 'Are Scottish tax rates different?',
-    answer:
-      'Yes. Scotland uses its own income tax rates. Scottish taxpayers have more bands including a Starter Rate (19%), Scottish Basic Rate (20%), Intermediate Rate (21%), Higher Rate (42%), Advanced Rate (45%), and Top Rate (48%) for the highest earners.',
-  },
-  {
-    question: 'What student loan plan should I select?',
-    answer:
-      'Plan 1 applies to loans taken before September 2012. Plan 2 applies to loans from 2012 to July 2023. Plan 4 is for Scottish students. Plan 5 applies from August 2023. Postgraduate Loan is separate and can be combined with other plans.',
-  },
-  {
-    question: 'How does pension contribution affect my take-home pay?',
-    answer:
-      'Pension contributions to a workplace pension (under relief at source or salary sacrifice) reduce your taxable income, effectively giving you tax relief at your marginal rate. A higher-rate taxpayer contributing 5% gets effective relief of 40% on that contribution.',
-  },
-]
-
-export default async function UKCalculatorPage() {
-  const taxData = await loadUKTaxData(2025)
-
-  const calcSchema = generateCalculatorSchema({
-    name: 'WagePilot UK Income Tax Calculator',
-    description: 'Free UK PAYE take-home pay calculator for 2025/26 tax year.',
-    url: '/uk-income-tax-calculator',
-    calculatorType: 'take-home',
-  })
-
-  return (
-    <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(calcSchema) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(generateFAQSchema(faqs)) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema([
-        { name: 'Home', href: '/' },
-        { name: 'UK Income Tax Calculator', href: '/uk-income-tax-calculator' },
-      ])) }} />
-
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <nav className="mb-6 text-sm text-muted-foreground">
-          <ol className="flex items-center gap-2">
-            <li><a href="/" className="hover:text-foreground">Home</a></li>
-            <li>/</li>
-            <li className="text-foreground">UK Income Tax Calculator</li>
-          </ol>
+const CC=['#ef4444','#f59e0b','#3b82f6','#8b5cf6','#10b981']
+export default function UKPage(){
+  const[salary,setSalary]=useState(45000)
+  const[region,setRegion]=useState('england')
+  const[pension,setPension]=useState(5)
+  const[sl,setSl]=useState('none')
+  const[r,setR]=useState(calcUK(45000,'england',5,'none'))
+  useEffect(()=>{setR(calcUK(salary,region,pension,sl))},[salary,region,pension,sl])
+  const chart=[{name:'Income Tax',value:r.incomeTax},{name:'Nat. Insurance',value:r.ni},...(r.pension>0?[{name:'Pension',value:r.pension}]:[]),...(r.studentLoan>0?[{name:'Student Loan',value:r.studentLoan}]:[]),{name:'Net Pay',value:r.net}].filter(d=>d.value>0)
+  const inp={width:'100%',border:'1px solid #e2e8f0',borderRadius:'10px',padding:'10px 12px',fontSize:'14px',color:'#0f172a',outline:'none',background:'white',boxSizing:'border-box' as const}
+  return(
+    <div style={{background:'#f8fafc',minHeight:'100vh',fontFamily:'system-ui,sans-serif'}}>
+      <SharedNav/>
+      <div style={{maxWidth:'1000px',margin:'0 auto',padding:'32px 20px'}}>
+        <nav style={{fontSize:'13px',color:'#94a3b8',marginBottom:'20px'}}>
+          <Link href="/" style={{color:'#94a3b8',textDecoration:'none'}}>Home</Link>{' / '}<span style={{color:'#0f172a'}}>UK Income Tax Calculator</span>
         </nav>
-
-        <div className="mb-8">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-600 dark:text-blue-400">
-            🇬🇧 2025/26 Tax Year
+        <div style={{marginBottom:'28px'}}>
+          <div style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'#dbeafe',color:'#1d4ed8',padding:'4px 12px',borderRadius:'999px',fontSize:'12px',fontWeight:'700',marginBottom:'10px'}}>🇬🇧 Latest Tax Year</div>
+          <h1 style={{fontSize:'clamp(1.6rem,4vw,2.2rem)',fontWeight:'800',color:'#0f172a',margin:'0 0 8px'}}>UK Income Tax Calculator — PAYE</h1>
+          <p style={{color:'#64748b',fontSize:'15px',margin:0}}>Calculate take-home pay after PAYE income tax, NI, pension and student loan. Covers England, Scotland, Wales & N. Ireland.</p>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:'20px'}}>
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #e2e8f0',padding:'24px'}}>
+            <h2 style={{fontSize:'1rem',fontWeight:'700',color:'#0f172a',marginBottom:'20px'}}>Your Details</h2>
+            <div style={{marginBottom:'16px'}}>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Annual Salary</label>
+              <div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8',fontWeight:'600'}}>£</span>
+              <input type="number" value={salary} onChange={e=>setSalary(Number(e.target.value))} min={0} style={{...inp,paddingLeft:'28px'}}/></div>
+              <input type="range" min={12571} max={300000} step={500} value={salary} onChange={e=>setSalary(Number(e.target.value))} style={{width:'100%',marginTop:'8px',accentColor:'#3b82f6'}}/>
+            </div>
+            <div style={{marginBottom:'16px'}}>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Region</label>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'6px'}}>
+                {[['england','England'],['scotland','Scotland'],['wales','Wales'],['ni','N. Ireland']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setRegion(v)} style={{padding:'8px',borderRadius:'8px',border:`1px solid ${region===v?'#3b82f6':'#e2e8f0'}`,background:region===v?'#eff6ff':'white',color:region===v?'#2563eb':'#64748b',fontSize:'12px',fontWeight:'600',cursor:'pointer'}}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{marginBottom:'16px'}}>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Pension: {pension}%</label>
+              <input type="range" min={0} max={30} step={0.5} value={pension} onChange={e=>setPension(Number(e.target.value))} style={{width:'100%',accentColor:'#3b82f6'}}/>
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Student Loan Plan</label>
+              <select value={sl} onChange={e=>setSl(e.target.value)} style={inp}>
+                <option value="none">No Student Loan</option>
+                <option value="plan1">Plan 1 (threshold £24,990)</option>
+                <option value="plan2">Plan 2 (threshold £27,295)</option>
+                <option value="plan4">Plan 4 Scotland (£31,395)</option>
+                <option value="plan5">Plan 5 (threshold £25,000)</option>
+                <option value="postgrad">Postgraduate (£21,000)</option>
+              </select>
+            </div>
           </div>
-          <h1 className="font-sora text-3xl font-bold tracking-tight sm:text-4xl">
-            UK Income Tax Calculator 2025/26
-          </h1>
-          <p className="mt-3 max-w-2xl text-muted-foreground">
-            Calculate your take-home pay after PAYE income tax, National Insurance, pension, and
-            student loan. Covers England, Scotland, Wales, and Northern Ireland.
-          </p>
+          <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+            <div style={{background:'linear-gradient(135deg,#2563eb,#06b6d4)',borderRadius:'16px',padding:'24px',color:'white'}}>
+              <p style={{margin:'0 0 4px',fontSize:'12px',opacity:.8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Annual Take-Home Pay</p>
+              <p style={{margin:'0 0 4px',fontSize:'2.4rem',fontWeight:'900',lineHeight:1}}>£{r.net.toLocaleString()}</p>
+              <p style={{margin:'0 0 8px',fontSize:'13px',opacity:.8}}>£{r.monthly.toLocaleString()}/mo · £{r.weekly.toLocaleString()}/wk</p>
+              <p style={{margin:0,fontSize:'12px',opacity:.75}}>Effective: {r.effectiveRate}% · Marginal: {r.marginalRate}% · PA: £{r.personalAllowance.toLocaleString()}</p>
+            </div>
+            <div style={{background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',overflow:'hidden'}}>
+              <div style={{padding:'14px 18px',borderBottom:'1px solid #e2e8f0',fontWeight:'700',fontSize:'14px',color:'#0f172a'}}>PAYE Breakdown</div>
+              {[{l:'Gross Salary',v:salary},{l:'Income Tax',v:-r.incomeTax},{l:'National Insurance',v:-r.ni},...(r.pension>0?[{l:`Pension (${pension}%)`,v:-r.pension}]:[]),...(r.studentLoan>0?[{l:'Student Loan',v:-r.studentLoan}]:[]),{l:'🎉 Take-Home Pay',v:r.net,h:true}].map((row:any,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'11px 18px',borderBottom:'1px solid #f1f5f9',background:row.h?'#f0fdf4':'white'}}>
+                  <span style={{fontSize:'13px',color:row.h?'#166534':'#64748b',fontWeight:row.h?'700':'400'}}>{row.l}</span>
+                  <span style={{fontSize:'13px',fontWeight:'700',color:row.h?'#16a34a':row.v<0?'#ef4444':'#0f172a'}}>{row.v<0?`−£${Math.abs(row.v).toLocaleString()}`:`£${row.v.toLocaleString()}`}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{height:'180px',background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',padding:'12px'}}>
+              <p style={{fontSize:'13px',fontWeight:'700',color:'#0f172a',margin:'0 0 8px'}}>Pay Distribution</p>
+              <div style={{height:'140px'}}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart><Pie data={chart} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={2} dataKey="value">
+                    {chart.map((_,i)=><Cell key={i} fill={CC[i]} strokeWidth={0}/>)}
+                  </Pie><Tooltip formatter={(v:number)=>[`£${Number(v).toLocaleString()}`,'']} contentStyle={{borderRadius:'8px',border:'1px solid #e2e8f0',fontSize:'12px'}}/>
+                  <Legend iconSize={8} formatter={v=><span style={{fontSize:'10px',color:'#64748b'}}>{v}</span>}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <UKSalaryCalculator taxData={taxData} />
-
-        <AdSlot slot="in-content" className="my-10" />
-
-        <div className="mt-12 prose prose-gray dark:prose-invert max-w-none">
-          <h2>UK Income Tax Bands 2025/26</h2>
-          <p>
-            For the 2025/26 tax year, UK residents (outside Scotland) pay 20% on income between
-            £12,570 and £50,270, 40% on income from £50,270 to £125,140, and 45% on income above
-            £125,140. The personal allowance of £12,570 is tax-free.
-          </p>
-
-          <h2>Understanding Your Tax Code</h2>
-          <p>
-            Your PAYE tax code tells your employer how much tax to deduct. The most common code
-            is 1257L, representing the £12,570 personal allowance. Letters indicate your situation:
-            L (standard allowance), M (marriage allowance received), N (marriage allowance given),
-            T (other adjustments), 0T (no personal allowance), BR (all income at basic rate).
-          </p>
+        <div style={{marginTop:'20px',background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',padding:'18px'}}>
+          <h3 style={{fontSize:'14px',fontWeight:'700',color:'#0f172a',marginBottom:'10px'}}>Related Calculators</h3>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+            {[{name:'💰 US Salary',href:'/salary-calculator'},{name:'💼 Contractor',href:'/contractor-calculator'},{name:'📊 Compare States',href:'/salary-comparison'}].map(c=>(
+              <Link key={c.href} href={c.href} style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',padding:'7px 14px',textDecoration:'none',fontSize:'13px',fontWeight:'600',color:'#2563eb'}}>{c.name}</Link>
+            ))}
+          </div>
         </div>
-
-        <FAQSection faqs={faqs} />
       </div>
-    </>
+      <SharedFooter/>
+    </div>
   )
 }
