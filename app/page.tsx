@@ -1,785 +1,547 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend
-} from 'recharts'
-import {
-  Moon, Sun, Menu, X, ChevronDown, Calculator, DollarSign,
-  Clock, Briefcase, TrendingUp, Percent, ArrowRight, Check,
-  Shield, Zap, Globe, Smartphone, Lock, Star, Mail,
-  BookOpen, BarChart2, MapPin
-} from 'lucide-react'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
 type Country = 'USA' | 'UK'
 type FilingStatus = 'single' | 'married' | 'head'
-type Theme = 'dark' | 'light'
 
-// ─── Tax calculation helpers ─────────────────────────────────────────────────
+// ─── Tax Calculations ─────────────────────────────────────────────────────────
 function calcUS(gross: number, state: string, filing: FilingStatus) {
-  const stdDeduction = filing === 'married' ? 30000 : filing === 'head' ? 22500 : 15000
-  const taxable = Math.max(0, gross - stdDeduction)
-  const brackets = filing === 'married'
-    ? [[23850,0.10],[96950,0.12],[206700,0.22],[394600,0.24],[501050,0.32],[751600,0.35],[Infinity,0.37]]
-    : [[11925,0.10],[48475,0.12],[103350,0.22],[197300,0.24],[250525,0.32],[626350,0.35],[Infinity,0.37]]
-  let federal = 0, prev = 0
-  for (const [limit, rate] of brackets as [number,number][]) {
-    if (taxable <= prev) break
-    federal += (Math.min(taxable, limit) - prev) * rate
-    prev = limit
-  }
-  const stateRates: Record<string,number> = {
-    TX:0, FL:0, WA:0, NV:0, SD:0, TN:0, WY:0, AK:0,
-    CA:0.093, NY:0.0685, IL:0.0495, CO:0.044, GA:0.055,
-    PA:0.0307, AZ:0.025, NC:0.0449, MA:0.05, VA:0.0575,
-    OH:0.0399, MI:0.0425, OR:0.0875, NJ:0.0637, MN:0.0785,
-  }
-  const stateTax = gross * (stateRates[state] || 0)
-  const ss = Math.min(gross, 176100) * 0.062
-  const medicare = gross * 0.0145
-  const total = federal + stateTax + ss + medicare
-  return { federal: Math.round(federal), state: Math.round(stateTax), ss: Math.round(ss), medicare: Math.round(medicare), net: Math.round(gross - total), total: Math.round(total) }
+  const std = filing === 'married' ? 30000 : filing === 'head' ? 22500 : 15000
+  const taxable = Math.max(0, gross - std)
+  const brk = filing === 'married'
+    ? [[23850,.10],[96950,.12],[206700,.22],[394600,.24],[501050,.32],[751600,.35],[Infinity,.37]]
+    : [[11925,.10],[48475,.12],[103350,.22],[197300,.24],[250525,.32],[626350,.35],[Infinity,.37]]
+  let fed = 0, prev = 0
+  for (const [l, r] of brk as any) { if (taxable <= prev) break; fed += (Math.min(taxable, l) - prev) * r; prev = l }
+  const SR: any = {TX:0,FL:0,WA:0,NV:0,CA:.093,NY:.0685,IL:.0495,CO:.044,GA:.055,PA:.0307,AZ:.025,NC:.0449,MA:.05,VA:.0575,OH:.0399,MI:.0425,OR:.0875,NJ:.1075,MN:.0985,MD:.0575}
+  const st = gross * (SR[state] || 0)
+  const ss = Math.min(gross, 176100) * .062
+  const med = gross * .0145
+  const total = fed + st + ss + med
+  return { federal: Math.round(fed), state: Math.round(st), fica: Math.round(ss + med), net: Math.round(gross - total), total: Math.round(total), eff: (total / gross * 100).toFixed(1), marginal: taxable > 250525 ? 35 : taxable > 197300 ? 32 : taxable > 103350 ? 24 : taxable > 48475 ? 22 : taxable > 11925 ? 12 : 10 }
 }
 
-function calcUK(gross: number) {
-  const pa = 12570
-  const taxable = Math.max(0, gross - pa)
-  const basicBand = Math.min(taxable, 37700)
-  const higherBand = Math.max(0, Math.min(taxable - 37700, 87430))
-  const additionalBand = Math.max(0, taxable - 125140)
-  const incomeTax = basicBand * 0.20 + higherBand * 0.40 + additionalBand * 0.45
-  let ni = 0
-  if (gross > 12570) ni += Math.min(gross - 12570, 37700) * 0.08
-  if (gross > 50270) ni += (gross - 50270) * 0.02
-  const total = incomeTax + ni
-  return { incomeTax: Math.round(incomeTax), ni: Math.round(ni), net: Math.round(gross - total), total: Math.round(total) }
+function calcUK(gross: number, region: string, pension: number, sl: string) {
+  const pen = Math.round(gross * pension / 100)
+  const pa = gross - pen > 100000 ? Math.max(0, 12570 - Math.floor((gross - pen - 100000) / 2)) : 12570
+  const taxable = Math.max(0, gross - pen - pa)
+  let it = 0
+  if (region === 'scotland') { const b:any=[[2351,.19],[13120,.20],[17622,.21],[31337,.42],[50140,.45],[Infinity,.48]];let r=taxable;for(const[band,rate]of b){if(r<=0)break;it+=Math.min(r,band)*rate;r-=band} }
+  else { it = Math.min(taxable,37700)*.20 + Math.max(0,Math.min(taxable-37700,87440))*.40 + Math.max(0,taxable-125140)*.45 }
+  let ni = 0; if (gross > 12570) ni = Math.min(gross-12570,37700)*.08 + Math.max(0,gross-50270)*.02
+  const slP:any = {plan1:[24990,.09],plan2:[27295,.09],plan4:[31395,.09],plan5:[25000,.09],postgrad:[21000,.06]}
+  let slAmt = 0; if (sl !== 'none' && slP[sl]) { const [t,r] = slP[sl]; slAmt = Math.max(0,gross-t)*r }
+  const total = Math.round(it)+Math.round(ni)+pen+Math.round(slAmt)
+  const mr = taxable > 125140 ? (region==='scotland'?48:45) : taxable > 37700 ? (region==='scotland'?42:40) : 20
+  return { incomeTax:Math.round(it), ni:Math.round(ni), pension:pen, studentLoan:Math.round(slAmt), net:gross-total, total, eff:(total/gross*100).toFixed(1), marginal:mr, pa, taxableIncome:Math.round(taxable) }
 }
 
-function fmt(n: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n)
-}
+function fmt(n: number, c = 'USD') { return new Intl.NumberFormat('en-US',{style:'currency',currency:c,maximumFractionDigits:0}).format(n) }
 
-// ─── Data ────────────────────────────────────────────────────────────────────
-const US_STATES = [
-  {code:'TX',name:'Texas'},{code:'CA',name:'California'},{code:'FL',name:'Florida'},
-  {code:'NY',name:'New York'},{code:'WA',name:'Washington'},{code:'IL',name:'Illinois'},
-  {code:'PA',name:'Pennsylvania'},{code:'GA',name:'Georgia'},{code:'CO',name:'Colorado'},
-  {code:'AZ',name:'Arizona'},{code:'NC',name:'North Carolina'},{code:'VA',name:'Virginia'},
-  {code:'MA',name:'Massachusetts'},{code:'NV',name:'Nevada'},{code:'OH',name:'Ohio'},
+const US_STATES = [{c:'TX',n:'Texas'},{c:'CA',n:'California'},{c:'FL',n:'Florida'},{c:'NY',n:'New York'},{c:'WA',n:'Washington'},{c:'IL',n:'Illinois'},{c:'PA',n:'Pennsylvania'},{c:'GA',n:'Georgia'},{c:'CO',n:'Colorado'},{c:'AZ',n:'Arizona'},{c:'NC',n:'North Carolina'},{c:'VA',n:'Virginia'},{c:'MA',n:'Massachusetts'},{c:'NV',n:'Nevada'},{c:'OH',n:'Ohio'},{c:'MI',n:'Michigan'},{c:'NJ',n:'New Jersey'},{c:'MN',n:'Minnesota'},{c:'OR',n:'Oregon'},{c:'MD',n:'Maryland'}]
+const CALCS = [
+  {e:'💰',t:'Salary Calculator',d:'Annual take-home with full tax breakdown.',h:'/salary-calculator',c:'#3b82f6'},
+  {e:'🧾',t:'Paycheck Calculator',d:'See what lands in your bank each pay period.',h:'/paycheck-calculator',c:'#8b5cf6'},
+  {e:'⏰',t:'Overtime Calculator',d:'1.5×, 2× overtime pay and tax impact.',h:'/overtime-calculator',c:'#f59e0b'},
+  {e:'🕐',t:'Hourly → Salary',d:'Convert any hourly rate to annual salary.',h:'/hourly-to-salary-calculator',c:'#10b981'},
+  {e:'✅',t:'Take Home Pay',d:'Quick net pay after all deductions.',h:'/take-home-pay-calculator',c:'#06b6d4'},
+  {e:'💼',t:'Contractor Tax',d:'1099 self-employment tax & quarterly estimates.',h:'/contractor-calculator',c:'#ec4899'},
+  {e:'🏠',t:'Mortgage Calculator',d:'How much house can you afford?',h:'/mortgage-affordability-calculator',c:'#f97316'},
+  {e:'🐷',t:'Savings Calculator',d:'Compound interest growth projections.',h:'/savings-calculator',c:'#84cc16'},
+  {e:'📊',t:'Salary Comparison',d:'Compare take-home across all 50 states.',h:'/salary-comparison',c:'#6366f1'},
+  {e:'🇬🇧',t:'UK Income Tax',d:'PAYE, NI, Scottish rates & student loan.',h:'/uk-income-tax-calculator',c:'#0ea5e9'},
 ]
-
-const UK_REGIONS = [
-  {code:'ENG',name:'England'},{code:'SCT',name:'Scotland'},
-  {code:'WLS',name:'Wales'},{code:'NIR',name:'N. Ireland'},
-]
-
-const CALCULATORS = [
-  { icon: DollarSign, title: 'Paycheck Calculator', desc: 'See exactly what lands in your bank account each pay period.', href: '/paycheck-calculator', color: 'from-blue-500 to-blue-600' },
-  { icon: TrendingUp, title: 'Salary Calculator', desc: 'Calculate annual take-home pay with full tax breakdown.', href: '/salary-calculator', color: 'from-violet-500 to-violet-600' },
-  { icon: Clock, title: 'Overtime Calculator', desc: 'Compute 1.5×, 2× overtime pay and its tax impact.', href: '/overtime-calculator', color: 'from-amber-500 to-amber-600' },
-  { icon: Percent, title: 'Hourly → Salary', desc: 'Instantly convert hourly wages to annual salary.', href: '/hourly-to-salary-calculator', color: 'from-emerald-500 to-emerald-600' },
-  { icon: Calculator, title: 'Take Home Pay', desc: 'Quick net pay after all deductions and taxes.', href: '/take-home-pay-calculator', color: 'from-cyan-500 to-cyan-600' },
-  { icon: Briefcase, title: 'Contractor Tax', desc: 'Self-employment tax, quarterly estimates, and deductions.', href: '/contractor-calculator', color: 'from-rose-500 to-rose-600' },
-]
-
 const FEATURES = [
-  { icon: Shield, title: 'Accurate Tax Rates', desc: 'IRS & HMRC verified 2026 tax brackets updated annually.' },
-  { icon: Globe, title: 'USA & UK Support', desc: 'Full coverage for all 50 US states and UK regions.' },
-  { icon: Zap, title: 'Real-Time Results', desc: 'Instant calculations as you type — no page refresh needed.' },
-  { icon: Smartphone, title: 'Mobile Optimized', desc: 'Works perfectly on any phone, tablet, or desktop.' },
-  { icon: Lock, title: 'Secure & Private', desc: 'No data stored. All calculations happen in your browser.' },
-  { icon: Star, title: '100% Free', desc: 'No signup, no paywall, no hidden costs. Forever free.' },
+  {e:'🛡️',t:'Accurate Tax Rates',d:'IRS & HMRC verified, updated annually.'},
+  {e:'🌍',t:'USA & UK Support',d:'All 50 US states and all UK regions.'},
+  {e:'⚡',t:'Real-Time Results',d:'Instant calculations as you type.'},
+  {e:'📱',t:'Mobile Optimized',d:'Works perfectly on any device.'},
+  {e:'🔒',t:'Secure & Private',d:'No data stored. All calculations in browser.'},
+  {e:'⭐',t:'100% Free',d:'No signup, no paywall, forever free.'},
 ]
+const CC = ['#ef4444','#f59e0b','#8b5cf6','#10b981']
+const UCC = ['#ef4444','#f59e0b','#3b82f6','#10b981']
 
-const BLOGS = [
-  { title: 'How Much Tax on a $100k Salary?', cat: 'Tax Guide', href: '/blog/100k-salary-tax', color: 'bg-blue-500' },
-  { title: 'Best States for Take-Home Pay in 2026', cat: 'Salary Guide', href: '/blog/best-states-take-home', color: 'bg-emerald-500' },
-  { title: 'Understanding UK PAYE & National Insurance', cat: 'UK Guide', href: '/blog/uk-paye-guide', color: 'bg-violet-500' },
-  { title: 'How Overtime Pay Is Taxed in 2026', cat: 'Overtime', href: '/blog/overtime-tax', color: 'bg-amber-500' },
-]
-
-const FAQS = [
-  { q: 'What is take-home pay?', a: 'Take-home pay is your gross salary minus all deductions — federal income tax, state income tax, Social Security (6.2%), Medicare (1.45%), and any voluntary deductions like 401(k). WagePilot calculates this instantly.' },
-  { q: 'How accurate is the calculator?', a: 'We use official IRS and HMRC published tax rates updated for 2026. Results are highly accurate for standard employment. Complex situations (multiple jobs, significant investments) may vary — always consult a tax professional.' },
-  { q: 'How often are tax rates updated?', a: 'We update US tax brackets after IRS Revenue Procedure announcements (typically October/November) and UK rates after each HMRC Budget Statement. Data is clearly labeled with the applicable tax year.' },
-  { q: 'Can I compare salaries across states?', a: 'Yes! Use our Salary Comparison tool to see take-home pay side-by-side for any salary across all 50 US states. Texas, Florida, and Nevada have no state income tax — a significant advantage for high earners.' },
-]
-
-const SEO_LINKS_USA = [
-  { name: 'Texas Paycheck Calculator', href: '/texas-salary-calculator' },
-  { name: 'California Salary Calculator', href: '/california-salary-calculator' },
-  { name: 'Florida Overtime Calculator', href: '/florida-salary-calculator' },
-  { name: 'New York Salary Calculator', href: '/new-york-salary-calculator' },
-  { name: 'Washington Take-Home Pay', href: '/washington-salary-calculator' },
-  { name: 'Illinois Paycheck Calculator', href: '/illinois-salary-calculator' },
-]
-
-const SEO_LINKS_UK = [
-  { name: 'UK PAYE Calculator', href: '/uk-income-tax-calculator' },
-  { name: 'London Salary Calculator', href: '/uk-income-tax-calculator' },
-  { name: 'IR35 Contractor Calculator', href: '/contractor-calculator' },
-  { name: 'UK Overtime Calculator', href: '/overtime-calculator' },
-]
-
-const CHART_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981']
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-function ThemeToggle({ theme, toggle }: { theme: Theme; toggle: () => void }) {
-  return (
-    <button onClick={toggle} aria-label="Toggle theme"
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/70 backdrop-blur transition hover:bg-white/10 hover:text-white">
-      {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-    </button>
-  )
-}
-
-function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <button className="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:text-white">
-        {label} <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-0 top-full mt-1 min-w-[200px] rounded-xl border border-white/10 bg-[#0d1b2a]/95 p-1.5 shadow-2xl backdrop-blur-xl">
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-function DropItem({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link href={href} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white/70 transition hover:bg-white/8 hover:text-white">
-      {children}
-    </Link>
-  )
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [theme, setTheme] = useState<Theme>('dark')
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [country, setCountry] = useState<Country>('USA')
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [theme, setTheme] = useState<'light'|'dark'>('light')
+  // US calc state
   const [salary, setSalary] = useState(75000)
-  const [state, setState] = useState('TX')
+  const [usState, setUsState] = useState('TX')
   const [filing, setFiling] = useState<FilingStatus>('single')
-  const [openFaq, setOpenFaq] = useState<number | null>(null)
+  // UK calc state
+  const [ukSalary, setUkSalary] = useState(45000)
+  const [ukRegion, setUkRegion] = useState('england')
+  const [ukPension, setUkPension] = useState(5)
+  const [ukSL, setUkSL] = useState('none')
+  // Data
+  const [blogs, setBlogs] = useState<any[]>([])
+  const [faqs, setFaqs] = useState<any[]>([])
+  const [openFaq, setOpenFaq] = useState<number|null>(null)
   const [email, setEmail] = useState('')
   const [subscribed, setSubscribed] = useState(false)
-  const mobileRef = useRef<HTMLDivElement>(null)
-
-  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
-
-  const result = country === 'USA'
-    ? calcUS(salary, state, filing)
-    : calcUK(salary)
-
-  const chartData = country === 'USA'
-    ? [
-        { name: 'Federal Tax', value: (result as any).federal },
-        { name: 'State Tax', value: (result as any).state },
-        { name: 'FICA', value: ((result as any).ss + (result as any).medicare) },
-        { name: 'Net Pay', value: result.net },
-      ].filter(d => d.value > 0)
-    : [
-        { name: 'Income Tax', value: (result as any).incomeTax },
-        { name: 'National Insurance', value: (result as any).ni },
-        { name: 'Net Pay', value: result.net },
-      ].filter(d => d.value > 0)
-
-  const currency = country === 'USA' ? 'USD' : 'GBP'
+  const [subLoading, setSubLoading] = useState(false)
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (mobileRef.current && !mobileRef.current.contains(e.target as Node)) {
-        setMobileOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const saved = localStorage.getItem('wp_country') as Country
+    if (saved) setCountry(saved)
+    fetch('/api/blog-posts').then(r=>r.json()).then(d=>setBlogs(d.filter((p:any)=>p.show_on_homepage).slice(0,4))).catch(()=>{})
+    fetch('/api/faqs?page=homepage').then(r=>r.json()).then(d=>setFaqs(d)).catch(()=>{})
+    const handler = (e: any) => { setCountry(e.detail); localStorage.setItem('wp_country', e.detail) }
+    window.addEventListener('countryChange', handler)
+    return () => window.removeEventListener('countryChange', handler)
   }, [])
 
-  const bgMain = theme === 'dark' ? '#040e1a' : '#f0f4f8'
-  const textMain = theme === 'dark' ? '#ffffff' : '#0f172a'
-  const cardBg = theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.9)'
-  const cardBorder = theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
+  const handleCountryChange = (c: Country) => {
+    setCountry(c)
+    localStorage.setItem('wp_country', c)
+    window.dispatchEvent(new CustomEvent('countryChange', { detail: c }))
+  }
+
+  const usR = calcUS(salary, usState, filing)
+  const ukR = calcUK(ukSalary, ukRegion, ukPension, ukSL)
+  const usChart = [{n:'Federal',v:usR.federal},{n:'State',v:usR.state},{n:'FICA',v:usR.fica},{n:'Net',v:usR.net}].filter(d=>d.v>0)
+  const ukChart = [{n:'Income Tax',v:ukR.incomeTax},{n:'NI',v:ukR.ni},...(ukR.pension>0?[{n:'Pension',v:ukR.pension}]:[]),...(ukR.studentLoan>0?[{n:'Student Loan',v:ukR.studentLoan}]:[]),{n:'Net',v:ukR.net}].filter(d=>d.v>0)
+
+  const subscribe = async () => {
+    if (!email || !email.includes('@')) return
+    setSubLoading(true)
+    try { const r = await fetch('/api/newsletter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})}); if(r.ok) setSubscribed(true) } catch {}
+    setSubLoading(false)
+  }
+
+  const bg = theme==='dark'?'#040e1a':'#ffffff'
+  const text = theme==='dark'?'#ffffff':'#0f172a'
+  const muted = theme==='dark'?'rgba(255,255,255,0.55)':'#64748b'
+  const cardBg = theme==='dark'?'rgba(255,255,255,0.04)':'white'
+  const cardBorder = theme==='dark'?'rgba(255,255,255,0.08)':'#e2e8f0'
+  const secBg = theme==='dark'?'rgba(255,255,255,0.02)':'#f8fafc'
+  const inp = {background:theme==='dark'?'rgba(255,255,255,0.07)':'white',border:`1px solid ${cardBorder}`,borderRadius:'10px',padding:'10px 12px',fontSize:'14px',color:text,outline:'none',width:'100%',boxSizing:'border-box' as const,fontFamily:'system-ui'}
 
   return (
-    <div style={{ background: bgMain, color: textMain, fontFamily: "'Inter', system-ui, sans-serif", minHeight: '100vh' }}>
+    <div style={{background:bg,color:text,fontFamily:"'Inter',system-ui,sans-serif",minHeight:'100vh'}}>
       <style>{`
-        #desktop-nav { display: flex; }
-        #mobile-right { display: none !important; }
-        #cta-btn { display: inline-flex; }
-        #ham-btn { display: none !important; }
-        @media (max-width: 767px) {
-          #desktop-nav { display: none !important; }
-          #cta-btn { display: none !important; }
-          #ham-btn { display: flex !important; }
-        }
+        *{box-sizing:border-box;} #hp-desk{display:flex;} #hp-dr{display:flex;} #hp-mob{display:none;}
+        @media(max-width:768px){#hp-desk{display:none!important;} #hp-dr{display:none!important;} #hp-mob{display:flex!important;}}
+        .calc-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.12);}
+        .blog-card:hover{transform:translateY(-2px);}
       `}</style>
 
-      {/* ── Announcement Bar ─────────────────────────── */}
-      <div style={{ background: 'linear-gradient(90deg, #1d4ed8, #0891b2)', padding: '8px 16px', textAlign: 'center', fontSize: '12px', color: 'white', overflowX: 'hidden', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        <span style={{ opacity: 0.9 }}>✅ Updated 2026 Tax Rates &nbsp;·&nbsp; 🇺🇸 USA &amp; 🇬🇧 UK &nbsp;·&nbsp; ⚡ Free &amp; Instant</span>
+      {/* Announcement */}
+      <div style={{background:'linear-gradient(90deg,#1d4ed8,#0891b2)',padding:'7px 16px',textAlign:'center',fontSize:'12px',color:'white',fontWeight:'500'}}>
+        ✅ Updated for Latest Tax Rates &nbsp;·&nbsp; 🇺🇸 USA &amp; 🇬🇧 UK Calculators &nbsp;·&nbsp; ⚡ Free &amp; Instant
       </div>
 
-      {/* ── Navbar ───────────────────────────────────── */}
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(4,14,26,0.85)', borderBottom: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', padding: '0 20px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-
-          {/* Logo */}
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', flexShrink: 0 }}>
-            <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>✈️</div>
-            <span style={{ fontSize: '18px', fontWeight: '800', background: 'linear-gradient(90deg, #60a5fa, #22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>WagePilot</span>
+      {/* Navbar */}
+      <nav style={{position:'sticky',top:0,zIndex:100,background:'rgba(4,14,26,0.95)',borderBottom:'1px solid rgba(255,255,255,0.07)',backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)'}}>
+        <div style={{maxWidth:'1200px',margin:'0 auto',padding:'0 20px',height:'60px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'12px'}}>
+          <Link href="/" style={{display:'flex',alignItems:'center',gap:'9px',textDecoration:'none',flexShrink:0}}>
+            <div style={{width:'34px',height:'34px',background:'linear-gradient(135deg,#2563eb,#06b6d4)',borderRadius:'9px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px'}}>💰</div>
+            <span style={{fontSize:'18px',fontWeight:'800',background:'linear-gradient(90deg,#60a5fa,#22d3ee)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>WagePilot</span>
           </Link>
-
-          {/* Desktop center nav */}
-          <div id="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-            <NavDropdown label="Calculators">
-              <DropItem href="/paycheck-calculator">💳 Paycheck Calculator</DropItem>
-              <DropItem href="/salary-calculator">💰 Salary Calculator</DropItem>
-              <DropItem href="/overtime-calculator">⏰ Overtime Calculator</DropItem>
-              <DropItem href="/hourly-to-salary-calculator">🕐 Hourly → Salary</DropItem>
-              <DropItem href="/take-home-pay-calculator">✅ Take Home Pay</DropItem>
-              <DropItem href="/contractor-calculator">💼 Contractor Tax</DropItem>
-            </NavDropdown>
-            <NavDropdown label="States">
-              <div style={{ padding: '4px 8px 2px', fontSize: '10px', fontWeight: '700', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em' }}>USA</div>
-              <DropItem href="/texas-salary-calculator">🤠 Texas</DropItem>
-              <DropItem href="/california-salary-calculator">🌴 California</DropItem>
-              <DropItem href="/florida-salary-calculator">☀️ Florida</DropItem>
-              <DropItem href="/new-york-salary-calculator">🗽 New York</DropItem>
-              <div style={{ padding: '4px 8px 2px', fontSize: '10px', fontWeight: '700', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', marginTop: '4px' }}>UK</div>
-              <DropItem href="/uk-income-tax-calculator">🏛️ UK Income Tax</DropItem>
-            </NavDropdown>
-            <Link href="/blog" style={{ padding: '8px 12px', fontSize: '14px', fontWeight: '500', color: 'rgba(255,255,255,0.7)', textDecoration: 'none', borderRadius: '8px', transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'white')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}>
-              Blog
-            </Link>
-            <NavDropdown label="Legal">
-              <DropItem href="/privacy">🔒 Privacy Policy</DropItem>
-              <DropItem href="/terms">📋 Terms &amp; Conditions</DropItem>
-              <DropItem href="/disclaimer">⚠️ Disclaimer</DropItem>
-            </NavDropdown>
+          <div id="hp-desk" style={{alignItems:'center',gap:'2px'}}>
+            {[{l:'Calculators ▾',h:'#calcs'},{l:'Blog',h:'/blog'},{l:'About',h:'/about'},{l:'Contact',h:'/contact'}].map(item=>(
+              <a key={item.l} href={item.h} style={{padding:'7px 12px',borderRadius:'8px',textDecoration:'none',fontSize:'14px',fontWeight:'500',color:'rgba(255,255,255,0.75)'}}>
+                {item.l}
+              </a>
+            ))}
           </div>
-
-          {/* Desktop right */}
-          <div id="desktop-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <select value={country} onChange={e => setCountry(e.target.value as Country)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', fontWeight: '600', color: 'white', cursor: 'pointer' }}>
+          <div id="hp-dr" style={{alignItems:'center',gap:'8px'}}>
+            <select value={country} onChange={e=>handleCountryChange(e.target.value as Country)}
+              style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:'8px',padding:'6px 10px',fontSize:'13px',color:'white',cursor:'pointer',fontWeight:'600'}}>
               <option value="USA">🇺🇸 USA</option>
               <option value="UK">🇬🇧 UK</option>
             </select>
-            <ThemeToggle theme={theme} toggle={toggleTheme} />
-            <Link href="/salary-calculator" id="cta-btn"
-              style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', color: 'white', padding: '8px 18px', borderRadius: '8px', textDecoration: 'none', fontSize: '14px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+            <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} style={{width:'36px',height:'36px',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'8px',border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.07)',color:'white',cursor:'pointer',fontSize:'16px'}}>
+              {theme==='dark'?'☀️':'🌙'}
+            </button>
+            <Link href="/salary-calculator" style={{background:'linear-gradient(135deg,#3b82f6,#06b6d4)',color:'white',padding:'8px 18px',borderRadius:'8px',textDecoration:'none',fontSize:'14px',fontWeight:'700',whiteSpace:'nowrap'}}>
               Start Calculating
             </Link>
-            <button id="ham-btn" onClick={() => setMobileOpen(v => !v)}
-              style={{ display: 'none', width: '36px', height: '36px', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'white' }}>
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
           </div>
-
-          {/* Mobile right */}
-          <div id="mobile-right" style={{ display: 'none', alignItems: 'center', gap: '8px' }}>
-            <select value={country} onChange={e => setCountry(e.target.value as Country)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '5px 8px', fontSize: '12px', color: 'white' }}>
+          <div id="hp-mob" style={{alignItems:'center',gap:'8px'}}>
+            <select value={country} onChange={e=>handleCountryChange(e.target.value as Country)}
+              style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:'8px',padding:'5px 8px',fontSize:'12px',color:'white'}}>
               <option value="USA">🇺🇸</option>
               <option value="UK">🇬🇧</option>
             </select>
-            <ThemeToggle theme={theme} toggle={toggleTheme} />
-            <button id="hamburger-btn" onClick={() => setMobileOpen(v => !v)}
-              style={{ width: '36px', height: '36px', display: 'none', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'white' }}>
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            <button onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} style={{width:'32px',height:'32px',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'8px',border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.07)',color:'white',cursor:'pointer',fontSize:'14px'}}>
+              {theme==='dark'?'☀️':'🌙'}
+            </button>
+            <button onClick={()=>setMobileOpen(v=>!v)} style={{width:'34px',height:'34px',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:'8px',border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.07)',color:'white',cursor:'pointer',fontSize:'18px'}}>
+              {mobileOpen?'✕':'☰'}
             </button>
           </div>
         </div>
-
-        {/* Mobile slide menu */}
-        <AnimatePresence>
-          {mobileOpen && (
-            <motion.div ref={mobileRef}
-              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-              style={{ background: 'rgba(4,14,26,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(20px)', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {[
-                  { label: '💳 Paycheck Calculator', href: '/paycheck-calculator' },
-                  { label: '💰 Salary Calculator', href: '/salary-calculator' },
-                  { label: '⏰ Overtime Calculator', href: '/overtime-calculator' },
-                  { label: '🕐 Hourly → Salary', href: '/hourly-to-salary-calculator' },
-                  { label: '✅ Take Home Pay', href: '/take-home-pay-calculator' },
-                  { label: '💼 Contractor Tax', href: '/contractor-calculator' },
-                  { label: '📝 Blog', href: '/blog' },
-                  { label: '🔒 Privacy Policy', href: '/privacy' },
-                  { label: '📋 Terms', href: '/terms' },
-                ].map(item => (
-                  <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)}
-                    style={{ padding: '12px 14px', borderRadius: '10px', color: 'rgba(255,255,255,0.8)', textDecoration: 'none', fontSize: '15px', fontWeight: '500', background: 'rgba(255,255,255,0.03)' }}>
-                    {item.label}
-                  </Link>
-                ))}
-                <Link href="/salary-calculator" onClick={() => setMobileOpen(false)}
-                  style={{ marginTop: '12px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', color: 'white', padding: '14px', borderRadius: '12px', textDecoration: 'none', fontSize: '15px', fontWeight: '700', textAlign: 'center' }}>
-                  🚀 Start Calculating
-                </Link>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {mobileOpen && (
+          <div style={{background:'rgba(4,14,26,0.98)',borderTop:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',maxHeight:'80vh',overflowY:'auto'}}>
+            {[{l:'🏠 Home',h:'/'},{l:'💰 Salary Calculator',h:'/salary-calculator'},{l:'🧾 Paycheck Calculator',h:'/paycheck-calculator'},{l:'⏰ Overtime Calculator',h:'/overtime-calculator'},{l:'🕐 Hourly → Salary',h:'/hourly-to-salary-calculator'},{l:'✅ Take Home Pay',h:'/take-home-pay-calculator'},{l:'💼 Contractor Tax',h:'/contractor-calculator'},{l:'🏠 Mortgage Calculator',h:'/mortgage-affordability-calculator'},{l:'🐷 Savings Calculator',h:'/savings-calculator'},{l:'📊 Salary Comparison',h:'/salary-comparison'},{l:'🇬🇧 UK Income Tax',h:'/uk-income-tax-calculator'},{l:'📍 All 50 States',h:'/states'},{l:'📝 Blog',h:'/blog'},{l:'📞 Contact Us',h:'/contact'}].map(item=>(
+              <Link key={item.h} href={item.h} onClick={()=>setMobileOpen(false)}
+                style={{display:'block',padding:'11px 12px',borderRadius:'8px',color:'rgba(255,255,255,0.8)',textDecoration:'none',fontSize:'14px',fontWeight:'500'}}>
+                {item.l}
+              </Link>
+            ))}
+            <Link href="/salary-calculator" onClick={()=>setMobileOpen(false)}
+              style={{display:'block',marginTop:'10px',background:'linear-gradient(135deg,#3b82f6,#06b6d4)',color:'white',padding:'13px',borderRadius:'10px',textDecoration:'none',fontSize:'15px',fontWeight:'700',textAlign:'center'}}>
+              🚀 Start Calculating
+            </Link>
+          </div>
+        )}
       </nav>
 
-      {/* ── Hero ─────────────────────────────────────── */}
-      <section style={{ position: 'relative', overflow: 'hidden', padding: '48px 16px 48px' }}>
-        {/* Background orbs */}
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          <div style={{ position: 'absolute', top: '-100px', left: '50%', transform: 'translateX(-50%)', width: '600px', height: '600px', background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)', borderRadius: '50%' }} />
-          <div style={{ position: 'absolute', top: '100px', right: '-100px', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%)', borderRadius: '50%' }} />
-        </div>
-
-        <div style={{ maxWidth: '100%', margin: '0 auto', textAlign: 'center', position: 'relative' }}>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '999px', padding: '6px 16px', fontSize: '13px', color: '#60a5fa', fontWeight: '600', marginBottom: '24px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-              Updated for 2026 Tax Year — IRS &amp; HMRC Verified
-            </div>
-          </motion.div>
-
-          <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
-            style={{ fontSize: 'clamp(1.8rem, 6vw, 3.5rem)', fontWeight: '900', lineHeight: 1.15, letterSpacing: '-0.02em', margin: '0 0 16px', color: theme === 'dark' ? 'white' : '#0f172a' }}>
+      {/* Hero */}
+      <section style={{position:'relative',overflow:'hidden',padding:'56px 20px 48px',background:theme==='dark'?'radial-gradient(ellipse 80% 60% at 50% -10%,rgba(59,130,246,0.2),transparent),#040e1a':'radial-gradient(ellipse 80% 60% at 50% -10%,rgba(59,130,246,0.07),transparent),#ffffff'}}>
+        <div style={{maxWidth:'760px',margin:'0 auto',textAlign:'center'}}>
+          <div style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'rgba(59,130,246,0.1)',border:'1px solid rgba(59,130,246,0.2)',borderRadius:'999px',padding:'6px 16px',fontSize:'12px',color:'#3b82f6',fontWeight:'600',marginBottom:'20px'}}>
+            <span style={{width:'6px',height:'6px',borderRadius:'50%',background:'#10b981',display:'inline-block'}}/>
+            Updated for Latest Tax Year — IRS &amp; HMRC Verified
+          </div>
+          <h1 style={{fontSize:'clamp(1.9rem,5vw,3.2rem)',fontWeight:'900',lineHeight:1.12,letterSpacing:'-0.03em',margin:'0 0 16px',color:text}}>
             Calculate Your Salary &amp;{' '}
-            <span style={{ background: 'linear-gradient(90deg, #3b82f6, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <span style={{background:'linear-gradient(90deg,#3b82f6,#06b6d4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
               Take-Home Pay
             </span>{' '}
             Instantly
-          </motion.h1>
-
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
-            style={{ fontSize: '18px', color: theme === 'dark' ? 'rgba(255,255,255,0.6)' : '#475569', marginBottom: '32px', lineHeight: 1.7 }}>
+          </h1>
+          <p style={{fontSize:'17px',color:muted,marginBottom:'28px',lineHeight:1.7}}>
             Free paycheck, salary, overtime and tax calculators for USA &amp; UK with accurate real-time breakdowns.
-          </motion.p>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}
-            style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '36px' }}>
-            <Link href="/salary-calculator"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', color: 'white', padding: '14px 28px', borderRadius: '12px', textDecoration: 'none', fontSize: '15px', fontWeight: '700', boxShadow: '0 8px 32px rgba(59,130,246,0.35)' }}>
-              Start Calculating <ArrowRight className="h-4 w-4" />
+          </p>
+          <div style={{display:'flex',gap:'12px',justifyContent:'center',flexWrap:'wrap',marginBottom:'28px'}}>
+            <Link href="/salary-calculator" style={{display:'inline-flex',alignItems:'center',gap:'8px',background:'linear-gradient(135deg,#3b82f6,#06b6d4)',color:'white',padding:'13px 28px',borderRadius:'12px',textDecoration:'none',fontSize:'15px',fontWeight:'700',boxShadow:'0 8px 24px rgba(59,130,246,0.3)'}}>
+              Start Calculating →
             </Link>
-            <Link href="/salary-comparison"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: theme === 'dark' ? 'white' : '#0f172a', padding: '14px 28px', borderRadius: '12px', textDecoration: 'none', fontSize: '15px', fontWeight: '700' }}>
-              <BarChart2 className="h-4 w-4" /> Compare Salaries
+            <Link href="/salary-comparison" style={{display:'inline-flex',alignItems:'center',gap:'8px',background:theme==='dark'?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.05)',border:`1px solid ${cardBorder}`,color:text,padding:'13px 28px',borderRadius:'12px',textDecoration:'none',fontSize:'15px',fontWeight:'700'}}>
+              📊 Compare Salaries
             </Link>
-          </motion.div>
-
-          {/* Trust badges */}
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center' }}>
-            {['✅ Updated 2026 Rates', '🔒 No Signup Required', '📱 Mobile Friendly', '⚡ Accurate Calculations'].map(badge => (
-              <span key={badge} style={{ fontSize: '13px', color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : '#64748b', fontWeight: '500' }}>{badge}</span>
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'16px',justifyContent:'center'}}>
+            {['✅ Latest Tax Rates','🔒 No Signup Required','📱 Mobile Friendly','⚡ Instant Results'].map(b=>(
+              <span key={b} style={{fontSize:'13px',color:muted,fontWeight:'500'}}>{b}</span>
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* ── Live Mini Calculator ──────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-          <motion.div initial={{ opacity: 0, y: 32 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}
-            style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(6,182,212,0.08))', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '20px', padding: '20px 16px', backdropFilter: 'blur(16px)' }}>
-
-            <h2 style={{ fontSize: '1.4rem', fontWeight: '800', margin: '0 0 24px', color: theme === 'dark' ? 'white' : '#0f172a', textAlign: 'center' }}>
-              ⚡ Live Salary Calculator
-            </h2>
-
-            {/* Inputs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Country</label>
-                <select value={country} onChange={e => setCountry(e.target.value as Country)}
-                  style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'white', border: `1px solid ${cardBorder}`, borderRadius: '10px', padding: '10px 12px', fontSize: '14px', color: theme === 'dark' ? 'white' : '#0f172a', fontWeight: '600' }}>
-                  <option value="USA">🇺🇸 USA</option>
-                  <option value="UK">🇬🇧 UK</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Annual Salary</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: theme === 'dark' ? 'rgba(255,255,255,0.4)' : '#94a3b8', fontWeight: '600' }}>{country === 'UK' ? '£' : '$'}</span>
-                  <input type="number" value={salary} onChange={e => setSalary(Number(e.target.value))} min={0}
-                    style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'white', border: `1px solid ${cardBorder}`, borderRadius: '10px', padding: '10px 12px 10px 28px', fontSize: '14px', color: theme === 'dark' ? 'white' : '#0f172a', fontWeight: '600', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-
-              {country === 'USA' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>State</label>
-                  <select value={state} onChange={e => setState(e.target.value)}
-                    style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'white', border: `1px solid ${cardBorder}`, borderRadius: '10px', padding: '10px 12px', fontSize: '14px', color: theme === 'dark' ? 'white' : '#0f172a', fontWeight: '600' }}>
-                    {US_STATES.map(s => <option key={s.code} value={s.code}>{s.name}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {country === 'USA' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Filing Status</label>
-                  <select value={filing} onChange={e => setFiling(e.target.value as FilingStatus)}
-                    style={{ width: '100%', background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'white', border: `1px solid ${cardBorder}`, borderRadius: '10px', padding: '10px 12px', fontSize: '14px', color: theme === 'dark' ? 'white' : '#0f172a', fontWeight: '600' }}>
-                    <option value="single">Single</option>
-                    <option value="married">Married Jointly</option>
-                    <option value="head">Head of Household</option>
-                  </select>
-                </div>
-              )}
+      {/* Live Calculator */}
+      <section style={{padding:'0 20px 52px'}}>
+        <div style={{maxWidth:'860px',margin:'0 auto'}}>
+          <div style={{background:theme==='dark'?'rgba(59,130,246,0.08)':cardBg,border:`1px solid ${theme==='dark'?'rgba(59,130,246,0.2)':cardBorder}`,borderRadius:'20px',padding:'28px 24px',boxShadow:theme==='dark'?'none':'0 4px 24px rgba(0,0,0,0.06)'}}>
+            <div style={{textAlign:'center',marginBottom:'20px'}}>
+              <h2 style={{fontSize:'1.3rem',fontWeight:'800',color:text,margin:'0 0 4px'}}>⚡ Live Salary Calculator</h2>
+              <p style={{fontSize:'13px',color:muted,margin:0}}>Real-time results — switch between USA &amp; UK</p>
+            </div>
+            {/* Country tabs */}
+            <div style={{display:'flex',gap:'8px',marginBottom:'20px',background:theme==='dark'?'rgba(255,255,255,0.06)':'#f1f5f9',borderRadius:'10px',padding:'4px'}}>
+              {(['USA','UK'] as Country[]).map(c=>(
+                <button key={c} onClick={()=>handleCountryChange(c)}
+                  style={{flex:1,padding:'9px',borderRadius:'8px',border:'none',cursor:'pointer',fontSize:'14px',fontWeight:'700',background:country===c?'linear-gradient(135deg,#3b82f6,#06b6d4)':'transparent',color:country===c?'white':muted,transition:'all 0.2s'}}>
+                  {c==='USA'?'🇺🇸 USA':'🇬🇧 UK'}
+                </button>
+              ))}
             </div>
 
-            {/* Slider */}
-            <div style={{ marginBottom: '24px' }}>
-              <input type="range" min={10000} max={500000} step={1000} value={salary}
-                onChange={e => setSalary(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#3b82f6' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>
-                <span>{country === 'UK' ? '£' : '$'}10k</span><span>{country === 'UK' ? '£' : '$'}500k</span>
-              </div>
-            </div>
-
-            {/* Results + Chart */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', alignItems: 'center' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                {(country === 'USA' ? ([
-                  { label: 'Federal Tax', value: (result as any).federal, color: '#ef4444' },
-                  { label: 'State Tax', value: (result as any).state, color: '#f59e0b' },
-                  { label: 'FICA', value: ((result as any).ss + (result as any).medicare), color: '#8b5cf6' },
-                  { label: '🎉 Net Pay', value: result.net, color: '#10b981', big: true },
-                ] as Array<{label:string;value:number;color:string;big?:boolean}>) : ([
-                  { label: 'Income Tax', value: (result as any).incomeTax, color: '#ef4444' },
-                  { label: 'Nat. Insurance', value: (result as any).ni, color: '#f59e0b' },
-                  { label: '🎉 Net Pay', value: result.net, color: '#10b981', big: true },
-                  { label: 'Monthly', value: Math.round(result.net / 12), color: '#3b82f6' },
-                ] as Array<{label:string;value:number;color:string;big?:boolean}>)).map((item) => (
-                  <div key={item.label} style={{ background: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderRadius: '12px', padding: '14px', border: `1px solid ${cardBorder}` }}>
-                    <div style={{ fontSize: '11px', color: theme === 'dark' ? 'rgba(255,255,255,0.45)' : '#64748b', marginBottom: '4px', fontWeight: '600' }}>{item.label}</div>
-                    <div style={{ fontSize: item.big ? '1.3rem' : '1.1rem', fontWeight: '800', color: item.color }}>{fmt(item.value, currency)}</div>
+            {country === 'USA' ? (
+              <>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:'12px',marginBottom:'16px'}}>
+                  <div>
+                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:muted,marginBottom:'5px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Annual Salary</label>
+                    <div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:muted,fontWeight:'600'}}>$</span>
+                    <input type="number" value={salary} onChange={e=>setSalary(Number(e.target.value))} min={0} style={{...inp,paddingLeft:'28px'}}/></div>
                   </div>
-                ))}
-                <div style={{ gridColumn: 'span 2', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '12px', color: '#10b981', fontWeight: '600', marginBottom: '2px' }}>Monthly Take-Home</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: '900', color: '#10b981' }}>{fmt(Math.round(result.net / 12), currency)}</div>
+                  <div>
+                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:muted,marginBottom:'5px',textTransform:'uppercase',letterSpacing:'0.05em'}}>State</label>
+                    <select value={usState} onChange={e=>setUsState(e.target.value)} style={inp}>{US_STATES.map(s=><option key={s.c} value={s.c}>{s.n}</option>)}</select>
+                  </div>
+                  <div>
+                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:muted,marginBottom:'5px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Filing Status</label>
+                    <select value={filing} onChange={e=>setFiling(e.target.value as FilingStatus)} style={inp}>
+                      <option value="single">Single</option>
+                      <option value="married">Married Jointly</option>
+                      <option value="head">Head of Household</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
+                <input type="range" min={10000} max={500000} step={1000} value={salary} onChange={e=>setSalary(Number(e.target.value))} style={{width:'100%',marginBottom:'20px'}}/>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'16px',alignItems:'start'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                    {([{l:'Federal Tax',v:usR.federal,c:'#ef4444'},{l:'State Tax',v:usR.state,c:usR.state===0?'#10b981':'#f59e0b'},{l:'FICA',v:usR.fica,c:'#8b5cf6'},{l:'🎉 Net Pay',v:usR.net,c:'#10b981',big:true}] as any[]).map(item=>(
+                      <div key={item.l} style={{background:theme==='dark'?'rgba(255,255,255,0.05)':'#f8fafc',borderRadius:'10px',padding:'12px',border:`1px solid ${cardBorder}`}}>
+                        <div style={{fontSize:'10px',color:muted,marginBottom:'3px',fontWeight:'600',textTransform:'uppercase'}}>{item.l}</div>
+                        <div style={{fontSize:item.big?'1.2rem':'1rem',fontWeight:'800',color:item.c}}>{fmt(item.v)}</div>
+                      </div>
+                    ))}
+                    <div style={{gridColumn:'span 2',background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.25)',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
+                      <div style={{fontSize:'10px',color:'#10b981',fontWeight:'700',marginBottom:'2px',textTransform:'uppercase'}}>Monthly Take-Home</div>
+                      <div style={{fontSize:'1.6rem',fontWeight:'900',color:'#10b981'}}>{fmt(Math.round(usR.net/12))}</div>
+                      <div style={{fontSize:'10px',color:muted,marginTop:'2px'}}>Eff. {usR.eff}% · Marginal {usR.marginal}%</div>
+                    </div>
+                  </div>
+                  <div style={{height:'180px'}}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart><Pie data={usChart.map(d=>({name:d.n,value:d.v}))} cx="50%" cy="50%" innerRadius={48} outerRadius={75} paddingAngle={2} dataKey="value">
+                        {usChart.map((_,i)=><Cell key={i} fill={CC[i]} strokeWidth={0}/>)}
+                      </Pie><Tooltip formatter={(v:number)=>[fmt(v),'']} contentStyle={{background:'#0d1b2a',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'8px',color:'white',fontSize:'12px'}}/>
+                      <Legend iconSize={8} formatter={v=><span style={{fontSize:'10px',color:muted}}>{v}</span>}/></PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'12px',marginBottom:'16px'}}>
+                  {[
+                    {label:'Annual Salary',pre:'£',val:ukSalary,set:setUkSalary,type:'number'},
+                    {label:'Region',val:ukRegion,set:setUkRegion,type:'select',opts:[['england','England'],['scotland','Scotland'],['wales','Wales'],['ni','N. Ireland']]},
+                    {label:'Pension %',val:ukPension,set:setUkPension,type:'number',min:0,max:30},
+                    {label:'Student Loan',val:ukSL,set:setUkSL,type:'select',opts:[['none','No Loan'],['plan1','Plan 1'],['plan2','Plan 2'],['plan4','Plan 4'],['plan5','Plan 5'],['postgrad','Postgrad']]},
+                  ].map((f:any)=>(
+                    <div key={f.label}>
+                      <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:muted,marginBottom:'5px',textTransform:'uppercase',letterSpacing:'0.05em'}}>{f.label}</label>
+                      {f.type==='select' ? (
+                        <select value={f.val} onChange={e=>f.set(e.target.value)} style={inp}>{f.opts.map(([v,l]:any)=><option key={v} value={v}>{l}</option>)}</select>
+                      ) : (
+                        <div style={{position:'relative'}}>{f.pre&&<span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:muted,fontWeight:'600'}}>{f.pre}</span>}
+                        <input type="number" value={f.val} onChange={e=>f.set(Number(e.target.value))} min={f.min||0} max={f.max} style={{...inp,...(f.pre?{paddingLeft:'28px'}:{})}}/>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <input type="range" min={12571} max={300000} step={500} value={ukSalary} onChange={e=>setUkSalary(Number(e.target.value))} style={{width:'100%',marginBottom:'20px'}}/>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:'16px',alignItems:'start'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                    {([
+                      {l:'Income Tax',v:ukR.incomeTax,c:'#ef4444'},
+                      {l:'Nat. Insurance',v:ukR.ni,c:'#f59e0b'},
+                      ...(ukR.pension>0?[{l:'Pension',v:ukR.pension,c:'#3b82f6'}]:[]),
+                      ...(ukR.studentLoan>0?[{l:'Student Loan',v:ukR.studentLoan,c:'#8b5cf6'}]:[]),
+                      {l:'🎉 Net Pay',v:ukR.net,c:'#10b981',big:true},
+                    ] as any[]).map((item,i)=>(
+                      <div key={i} style={{background:theme==='dark'?'rgba(255,255,255,0.05)':'#f8fafc',borderRadius:'10px',padding:'12px',border:`1px solid ${cardBorder}`}}>
+                        <div style={{fontSize:'10px',color:muted,marginBottom:'3px',fontWeight:'600',textTransform:'uppercase'}}>{item.l}</div>
+                        <div style={{fontSize:item.big?'1.2rem':'1rem',fontWeight:'800',color:item.c}}>£{item.v.toLocaleString()}</div>
+                      </div>
+                    ))}
+                    <div style={{gridColumn:'span 2',background:'rgba(16,185,129,0.1)',border:'1px solid rgba(16,185,129,0.25)',borderRadius:'10px',padding:'12px',textAlign:'center'}}>
+                      <div style={{fontSize:'10px',color:'#10b981',fontWeight:'700',marginBottom:'2px',textTransform:'uppercase'}}>Monthly Take-Home</div>
+                      <div style={{fontSize:'1.6rem',fontWeight:'900',color:'#10b981'}}>£{Math.round(ukR.net/12).toLocaleString()}</div>
+                      <div style={{fontSize:'10px',color:muted,marginTop:'2px'}}>Eff. {ukR.eff}% · Marginal {ukR.marginal}% · PA: £{ukR.pa.toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div style={{height:'180px'}}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart><Pie data={ukChart.map(d=>({name:d.n,value:d.v}))} cx="50%" cy="50%" innerRadius={48} outerRadius={75} paddingAngle={2} dataKey="value">
+                        {ukChart.map((_,i)=><Cell key={i} fill={UCC[i]} strokeWidth={0}/>)}
+                      </Pie><Tooltip formatter={(v:number)=>[`£${Number(v).toLocaleString()}`,'']} contentStyle={{background:'#0d1b2a',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'8px',color:'white',fontSize:'12px'}}/>
+                      <Legend iconSize={8} formatter={v=><span style={{fontSize:'10px',color:muted}}>{v}</span>}/></PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </>
+            )}
 
-              <div style={{ height: '200px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2} dataKey="value">
-                      {chartData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i]} strokeWidth={0} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => [fmt(v, currency), '']}
-                      contentStyle={{ background: '#0d1b2a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '12px' }} />
-                    <Legend iconSize={8} formatter={v => <span style={{ fontSize: '11px', color: theme === 'dark' ? 'rgba(255,255,255,0.7)' : '#475569' }}>{v}</span>} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-              <Link href="/salary-calculator"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', color: 'white', padding: '12px 24px', borderRadius: '10px', textDecoration: 'none', fontSize: '14px', fontWeight: '700' }}>
-                Full Detailed Calculator <ArrowRight className="h-4 w-4" />
+            <div style={{textAlign:'center',marginTop:'20px'}}>
+              <Link href={country==='USA'?'/salary-calculator':'/uk-income-tax-calculator'}
+                style={{display:'inline-flex',alignItems:'center',gap:'6px',background:'linear-gradient(135deg,#3b82f6,#06b6d4)',color:'white',padding:'11px 22px',borderRadius:'10px',textDecoration:'none',fontSize:'14px',fontWeight:'700'}}>
+                Full Detailed Calculator →
               </Link>
             </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ── Ad Slot 1 ─────────────────────────────────── */}
-      <section style={{ padding: '0 16px 40px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)', border: `1px dashed ${cardBorder}`, borderRadius: '12px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: theme === 'dark' ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>
-          Advertisement · 728×90
-        </div>
-      </section>
-
-      {/* ── Calculators Grid ──────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2rem)', fontWeight: '800', margin: '0 0 12px', color: theme === 'dark' ? 'white' : '#0f172a' }}>
-              All Calculators — 100% Free
-            </h2>
-            <p style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', fontSize: '15px' }}>
-              Professional-grade tools updated with 2026 tax data
-            </p>
           </div>
+        </div>
+      </section>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-            {CALCULATORS.map((calc, i) => (
-              <motion.div key={calc.title} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}>
-                <Link href={calc.href} style={{ display: 'block', textDecoration: 'none', background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: '16px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 12px 40px rgba(0,0,0,0.3)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-                    <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: `linear-gradient(135deg, ${calc.color.split(' ')[1]}, ${calc.color.split(' ')[3] || calc.color.split(' ')[1]})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <calc.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? 'white' : '#0f172a', marginBottom: '4px' }}>{calc.title}</div>
-                      <div style={{ fontSize: '13px', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', lineHeight: 1.5 }}>{calc.desc}</div>
-                    </div>
+      {/* Ad Slot 1 */}
+      <section style={{padding:'0 20px 48px'}}>
+        <div style={{maxWidth:'860px',margin:'0 auto',background:theme==='dark'?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.03)',border:`1px dashed ${cardBorder}`,borderRadius:'10px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',color:muted}}>Advertisement</div>
+      </section>
+
+      {/* All Calculators */}
+      <section id="calcs" style={{padding:'0 20px 52px',background:secBg}}>
+        <div style={{maxWidth:'1000px',margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:'32px'}}>
+            <h2 style={{fontSize:'clamp(1.4rem,3vw,1.9rem)',fontWeight:'800',color:text,margin:'0 0 8px'}}>All Calculators — 100% Free</h2>
+            <p style={{color:muted,fontSize:'14px'}}>Professional-grade tools updated with latest tax data</p>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'14px'}}>
+            {CALCS.map(calc=>(
+              <Link key={calc.h} href={calc.h} className="calc-card"
+                style={{display:'block',textDecoration:'none',background:cardBg,border:`1px solid ${cardBorder}`,borderRadius:'14px',padding:'18px',transition:'transform 0.2s,box-shadow 0.2s'}}>
+                <div style={{display:'flex',alignItems:'flex-start',gap:'12px'}}>
+                  <div style={{width:'40px',height:'40px',borderRadius:'10px',background:calc.c+'15',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:0}}>{calc.e}</div>
+                  <div>
+                    <div style={{fontSize:'14px',fontWeight:'700',color:text,marginBottom:'3px'}}>{calc.t}</div>
+                    <div style={{fontSize:'12px',color:muted,lineHeight:1.5}}>{calc.d}</div>
                   </div>
-                  <div style={{ marginTop: '14px', fontSize: '13px', fontWeight: '600', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    Open Calculator <ArrowRight className="h-3.5 w-3.5" />
-                  </div>
-                </Link>
-              </motion.div>
+                </div>
+                <div style={{marginTop:'12px',fontSize:'12px',fontWeight:'600',color:calc.c,display:'flex',alignItems:'center',gap:'4px'}}>Open →</div>
+              </Link>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── SEO Links ────────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-          <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: '16px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '20px' }}>🇺🇸</span>
-              <h3 style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? 'white' : '#0f172a', margin: 0 }}>USA State Calculators</h3>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {SEO_LINKS_USA.map(link => (
-                <Link key={link.href} href={link.href}
-                  style={{ fontSize: '14px', color: '#3b82f6', textDecoration: 'none', padding: '6px 10px', borderRadius: '8px', background: theme === 'dark' ? 'rgba(59,130,246,0.06)' : 'rgba(59,130,246,0.05)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MapPin className="h-3.5 w-3.5" /> {link.name}
-                </Link>
-              ))}
-            </div>
-          </div>
-          <div style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: '16px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '20px' }}>🇬🇧</span>
-              <h3 style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? 'white' : '#0f172a', margin: 0 }}>UK Tax Calculators</h3>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {SEO_LINKS_UK.map(link => (
-                <Link key={link.href} href={link.href}
-                  style={{ fontSize: '14px', color: '#3b82f6', textDecoration: 'none', padding: '6px 10px', borderRadius: '8px', background: theme === 'dark' ? 'rgba(59,130,246,0.06)' : 'rgba(59,130,246,0.05)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MapPin className="h-3.5 w-3.5" /> {link.name}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* Ad Slot 2 */}
+      <section style={{padding:'0 20px 48px'}}>
+        <div style={{maxWidth:'1000px',margin:'0 auto',background:theme==='dark'?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.03)',border:`1px dashed ${cardBorder}`,borderRadius:'10px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',color:muted}}>Advertisement</div>
       </section>
 
-      {/* ── Ad Slot 2 ─────────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)', border: `1px dashed ${cardBorder}`, borderRadius: '12px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: theme === 'dark' ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>
-          Advertisement · 728×90
-        </div>
-      </section>
-
-      {/* ── Why WagePilot ────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2rem)', fontWeight: '800', margin: '0 0 12px', color: theme === 'dark' ? 'white' : '#0f172a' }}>
-              Why Choose WagePilot?
-            </h2>
-            <p style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', fontSize: '15px' }}>Built for accuracy, speed, and privacy</p>
+      {/* Why WagePilot */}
+      <section style={{padding:'0 20px 52px'}}>
+        <div style={{maxWidth:'1000px',margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:'32px'}}>
+            <h2 style={{fontSize:'clamp(1.4rem,3vw,1.9rem)',fontWeight:'800',color:text,margin:'0 0 8px'}}>Why Choose WagePilot?</h2>
+            <p style={{color:muted,fontSize:'14px'}}>Built for accuracy, speed, and privacy</p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-            {FEATURES.map((f, i) => (
-              <motion.div key={f.title} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}
-                style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: '14px', padding: '20px', display: 'flex', gap: '14px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(59,130,246,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <f.icon className="h-5 w-5 text-blue-400" />
-                </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'14px'}}>
+            {FEATURES.map(f=>(
+              <div key={f.t} style={{background:cardBg,border:`1px solid ${cardBorder}`,borderRadius:'12px',padding:'18px',display:'flex',gap:'12px'}}>
+                <div style={{width:'38px',height:'38px',borderRadius:'10px',background:'rgba(59,130,246,0.1)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',flexShrink:0}}>{f.e}</div>
                 <div>
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: theme === 'dark' ? 'white' : '#0f172a', marginBottom: '4px' }}>{f.title}</div>
-                  <div style={{ fontSize: '13px', color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : '#64748b', lineHeight: 1.5 }}>{f.desc}</div>
+                  <div style={{fontSize:'14px',fontWeight:'700',color:text,marginBottom:'3px'}}>{f.t}</div>
+                  <div style={{fontSize:'12px',color:muted,lineHeight:1.5}}>{f.d}</div>
                 </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Blog ─────────────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '12px' }}>
-            <h2 style={{ fontSize: 'clamp(1.3rem, 3vw, 1.8rem)', fontWeight: '800', margin: 0, color: theme === 'dark' ? 'white' : '#0f172a' }}>
-              Finance Guides &amp; Tax Tips
-            </h2>
-            <Link href="/blog" style={{ fontSize: '14px', fontWeight: '600', color: '#3b82f6', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              All Articles <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-            {BLOGS.map((post, i) => (
-              <motion.div key={post.title} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}>
-                <Link href={post.href} style={{ display: 'block', textDecoration: 'none', background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: '14px', overflow: 'hidden', transition: 'transform 0.2s' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform = ''}>
-                  <div style={{ height: '6px', background: post.color === 'bg-blue-500' ? 'linear-gradient(90deg,#3b82f6,#06b6d4)' : post.color === 'bg-emerald-500' ? 'linear-gradient(90deg,#10b981,#06b6d4)' : post.color === 'bg-violet-500' ? 'linear-gradient(90deg,#8b5cf6,#3b82f6)' : 'linear-gradient(90deg,#f59e0b,#ef4444)' }} />
-                  <div style={{ padding: '16px' }}>
-                    <div style={{ display: 'inline-block', fontSize: '11px', fontWeight: '700', color: '#3b82f6', background: 'rgba(59,130,246,0.1)', borderRadius: '6px', padding: '3px 8px', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{post.cat}</div>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: theme === 'dark' ? 'white' : '#0f172a', lineHeight: 1.4, marginBottom: '12px' }}>{post.title}</div>
-                    <div style={{ fontSize: '13px', color: '#3b82f6', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <BookOpen className="h-3.5 w-3.5" /> Read More
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Ad Slot 3 ─────────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', background: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)', border: `1px dashed ${cardBorder}`, borderRadius: '12px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: theme === 'dark' ? 'rgba(255,255,255,0.2)' : '#94a3b8' }}>
-          Advertisement · 728×90
-        </div>
-      </section>
-
-      {/* ── FAQ ──────────────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-          <h2 style={{ fontSize: 'clamp(1.5rem, 3vw, 2rem)', fontWeight: '800', margin: '0 0 32px', textAlign: 'center', color: theme === 'dark' ? 'white' : '#0f172a' }}>
-            Frequently Asked Questions
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {FAQS.map((faq, i) => (
-              <div key={i} style={{ background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: '12px', overflow: 'hidden' }}>
-                <button onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', gap: '12px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: '600', color: theme === 'dark' ? 'white' : '#0f172a' }}>{faq.q}</span>
-                  <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.4)' : '#94a3b8', transform: openFaq === i ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                </button>
-                <AnimatePresence>
-                  {openFaq === i && (
-                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
-                      <p style={{ margin: 0, padding: '0 20px 16px', fontSize: '14px', color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : '#64748b', lineHeight: 1.7 }}>{faq.a}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Newsletter ───────────────────────────────── */}
-      <section style={{ padding: '0 16px 48px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto', background: 'linear-gradient(135deg, rgba(59,130,246,0.12), rgba(6,182,212,0.08))', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '20px', padding: '40px 32px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📬</div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: theme === 'dark' ? 'white' : '#0f172a', margin: '0 0 8px' }}>Get Tax Updates in Your Inbox</h2>
-          <p style={{ color: theme === 'dark' ? 'rgba(255,255,255,0.55)' : '#64748b', margin: '0 0 24px', fontSize: '14px' }}>New tax rates, salary guides, and calculator updates — no spam.</p>
-          {subscribed ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#10b981', fontWeight: '700' }}>
-              <Check className="h-5 w-5" /> Subscribed! Thank you 🎉
+      {/* Blog */}
+      <section style={{padding:'0 20px 52px',background:secBg}}>
+        <div style={{maxWidth:'1000px',margin:'0 auto'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'24px',flexWrap:'wrap',gap:'12px'}}>
+            <div>
+              <h2 style={{fontSize:'clamp(1.4rem,3vw,1.9rem)',fontWeight:'800',color:text,margin:'0 0 4px'}}>Finance Guides &amp; Tax Tips</h2>
+              <p style={{color:muted,fontSize:'14px',margin:0}}>Expert articles on taxes, salary, and financial planning</p>
+            </div>
+            <Link href="/blog" style={{fontSize:'14px',fontWeight:'600',color:'#3b82f6',textDecoration:'none'}}>All Articles →</Link>
+          </div>
+          {blogs.length === 0 ? (
+            <div style={{background:cardBg,border:`1px solid ${cardBorder}`,borderRadius:'14px',padding:'40px',textAlign:'center'}}>
+              <div style={{fontSize:'40px',marginBottom:'12px'}}>📝</div>
+              <p style={{color:muted,fontSize:'14px',margin:'0 0 16px'}}>No posts yet. Create posts from the admin panel and mark them to show on homepage.</p>
+              <Link href="/admin" style={{background:'#2563eb',color:'white',padding:'8px 20px',borderRadius:'8px',textDecoration:'none',fontSize:'13px',fontWeight:'600'}}>Go to Admin Panel</Link>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: '8px', maxWidth: '400px', margin: '0 auto', flexWrap: 'wrap', justifyContent: 'center' }}>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com"
-                style={{ flex: 1, minWidth: '200px', background: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'white', border: `1px solid ${cardBorder}`, borderRadius: '10px', padding: '12px 16px', fontSize: '14px', color: theme === 'dark' ? 'white' : '#0f172a', outline: 'none' }} />
-              <button onClick={async () => {
-                if (!email || !email.includes('@')) return
-                try {
-                  const res = await fetch('/api/newsletter', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                  })
-                  if (res.ok) setSubscribed(true)
-                } catch {}
-              }}
-                style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', color: 'white', border: 'none', borderRadius: '10px', padding: '12px 20px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Mail className="h-4 w-4" /> Subscribe
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:'14px'}}>
+              {blogs.map((post:any)=>(
+                <Link key={post.id} href={`/blog/${post.slug}`} className="blog-card"
+                  style={{display:'block',textDecoration:'none',background:cardBg,border:`1px solid ${cardBorder}`,borderRadius:'12px',overflow:'hidden',transition:'transform 0.2s'}}>
+                  <div style={{height:'5px',background:'linear-gradient(90deg,#3b82f6,#06b6d4)'}}/>
+                  <div style={{padding:'16px'}}>
+                    <div style={{display:'inline-block',fontSize:'10px',fontWeight:'700',color:'#3b82f6',background:'rgba(59,130,246,0.1)',borderRadius:'5px',padding:'2px 8px',marginBottom:'8px',textTransform:'uppercase'}}>{post.category?.replace(/-/g,' ')}</div>
+                    <h3 style={{fontSize:'14px',fontWeight:'700',color:text,margin:'0 0 6px',lineHeight:1.4}}>{post.title}</h3>
+                    <p style={{fontSize:'12px',color:muted,margin:'0 0 10px',lineHeight:1.5}}>{post.description?.slice(0,90)}...</p>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px',color:muted}}>
+                      <span>{post.read_time} min read</span>
+                      <span>{new Date(post.published_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Ad Slot 3 */}
+      <section style={{padding:'0 20px 48px'}}>
+        <div style={{maxWidth:'1000px',margin:'0 auto',background:theme==='dark'?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.03)',border:`1px dashed ${cardBorder}`,borderRadius:'10px',height:'80px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',color:muted}}>Advertisement</div>
+      </section>
+
+      {/* FAQ */}
+      <section style={{padding:'0 20px 52px'}}>
+        <div style={{maxWidth:'700px',margin:'0 auto'}}>
+          <h2 style={{fontSize:'clamp(1.4rem,3vw,1.9rem)',fontWeight:'800',color:text,margin:'0 0 24px',textAlign:'center'}}>Frequently Asked Questions</h2>
+          {faqs.length === 0 ? (
+            <div style={{background:cardBg,border:`1px solid ${cardBorder}`,borderRadius:'12px',padding:'32px',textAlign:'center'}}>
+              <p style={{color:muted,fontSize:'14px',margin:0}}>FAQs will appear here once added from admin panel.</p>
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+              {faqs.map((faq:any,i:number)=>(
+                <div key={faq.id} style={{background:cardBg,border:`1px solid ${cardBorder}`,borderRadius:'10px',overflow:'hidden'}}>
+                  <button onClick={()=>setOpenFaq(openFaq===i?null:i)}
+                    style={{width:'100%',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'15px 18px',background:'transparent',border:'none',cursor:'pointer',textAlign:'left',gap:'12px'}}>
+                    <span style={{fontSize:'14px',fontWeight:'600',color:text}}>{faq.question}</span>
+                    <span style={{color:muted,flexShrink:0,fontSize:'18px',transform:openFaq===i?'rotate(180deg)':'none',transition:'transform 0.2s',display:'inline-block'}}>⌄</span>
+                  </button>
+                  {openFaq===i && (
+                    <div style={{padding:'0 18px 15px'}}>
+                      <p style={{margin:0,fontSize:'14px',color:muted,lineHeight:1.7}}>{faq.answer}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Newsletter */}
+      <section style={{padding:'0 20px 52px'}}>
+        <div style={{maxWidth:'560px',margin:'0 auto',background:theme==='dark'?'rgba(59,130,246,0.08)':cardBg,border:`1px solid ${theme==='dark'?'rgba(59,130,246,0.2)':cardBorder}`,borderRadius:'18px',padding:'36px 28px',textAlign:'center',boxShadow:theme==='dark'?'none':'0 4px 24px rgba(0,0,0,0.06)'}}>
+          <div style={{fontSize:'32px',marginBottom:'12px'}}>📬</div>
+          <h2 style={{fontSize:'1.3rem',fontWeight:'800',color:text,margin:'0 0 6px'}}>Get Tax Updates in Your Inbox</h2>
+          <p style={{color:muted,margin:'0 0 20px',fontSize:'14px'}}>New tax rates, salary guides, and calculator updates — no spam.</p>
+          {subscribed ? (
+            <div style={{color:'#10b981',fontWeight:'700',fontSize:'15px'}}>✅ Subscribed! Thank you 🎉</div>
+          ) : (
+            <div style={{display:'flex',gap:'8px',maxWidth:'380px',margin:'0 auto',flexWrap:'wrap',justifyContent:'center'}}>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com"
+                style={{flex:1,minWidth:'200px',background:theme==='dark'?'rgba(255,255,255,0.08)':cardBg,border:`1px solid ${cardBorder}`,borderRadius:'9px',padding:'11px 14px',fontSize:'14px',color:text,outline:'none'}}/>
+              <button onClick={subscribe} disabled={subLoading}
+                style={{background:'linear-gradient(135deg,#3b82f6,#06b6d4)',color:'white',border:'none',borderRadius:'9px',padding:'11px 18px',fontSize:'14px',fontWeight:'700',cursor:subLoading?'not-allowed':'pointer'}}>
+                {subLoading?'...':'📧 Subscribe'}
               </button>
             </div>
           )}
-          <p style={{ fontSize: '12px', color: theme === 'dark' ? 'rgba(255,255,255,0.3)' : '#94a3b8', marginTop: '12px' }}>No spam · Unsubscribe anytime · Privacy protected</p>
+          <p style={{fontSize:'11px',color:muted,marginTop:'10px'}}>No spam · Unsubscribe anytime · Privacy protected</p>
         </div>
       </section>
 
-      {/* ── Footer ───────────────────────────────────── */}
-      <footer style={{ background: '#020b14', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '40px 16px 24px' }}>
-        <div style={{ maxWidth: '100%', margin: '0 auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '32px', marginBottom: '40px' }}>
+      {/* Footer */}
+      <footer style={{background:'#020b14',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'44px 20px 28px'}}>
+        <div style={{maxWidth:'1000px',margin:'0 auto'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'28px',marginBottom:'36px'}}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '18px' }}>✈️</span>
-                <span style={{ fontSize: '16px', fontWeight: '800', background: 'linear-gradient(90deg, #60a5fa, #22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>WagePilot</span>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px'}}>
+                <div style={{width:'30px',height:'30px',background:'linear-gradient(135deg,#2563eb,#06b6d4)',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'15px'}}>💰</div>
+                <span style={{fontSize:'16px',fontWeight:'800',background:'linear-gradient(90deg,#60a5fa,#22d3ee)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>WagePilot</span>
               </div>
-              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.7 }}>
-                Free salary &amp; tax calculators for US and UK workers. Updated for 2026.
-              </p>
+              <p style={{fontSize:'12px',color:'rgba(255,255,255,0.4)',lineHeight:1.7}}>Free salary & tax calculators for US and UK workers. Updated for latest tax year.</p>
             </div>
             {[
-              { title: 'Calculators', links: [
-                { name: 'Salary Calculator', href: '/salary-calculator' },
-                { name: 'Paycheck Calculator', href: '/paycheck-calculator' },
-                { name: 'Overtime Calculator', href: '/overtime-calculator' },
-                { name: 'Contractor Tax', href: '/contractor-calculator' },
-              ]},
-              { title: 'USA Pages', links: [
-                { name: 'Texas', href: '/texas-salary-calculator' },
-                { name: 'California', href: '/california-salary-calculator' },
-                { name: 'New York', href: '/new-york-salary-calculator' },
-                { name: 'All States', href: '/states' },
-              ]},
-              { title: 'UK Pages', links: [
-                { name: 'UK Income Tax', href: '/uk-income-tax-calculator' },
-                { name: 'IR35 Calculator', href: '/contractor-calculator' },
-                { name: 'Blog', href: '/blog' },
-                { name: 'About', href: '/about' },
-              ]},
-              { title: 'Legal', links: [
-                { name: 'Privacy Policy', href: '/privacy' },
-                { name: 'Terms & Conditions', href: '/terms' },
-                { name: 'Disclaimer', href: '/disclaimer' },
-                { name: 'Contact', href: '/contact' },
-              ]},
-            ].map(col => (
+              {title:'Calculators',links:[{n:'Salary Calculator',h:'/salary-calculator'},{n:'Paycheck Calculator',h:'/paycheck-calculator'},{n:'Overtime Calculator',h:'/overtime-calculator'},{n:'Contractor Tax',h:'/contractor-calculator'},{n:'UK Income Tax',h:'/uk-income-tax-calculator'}]},
+              {title:'USA Pages',links:[{n:'Texas',h:'/texas-salary-calculator'},{n:'California',h:'/california-salary-calculator'},{n:'New York',h:'/new-york-salary-calculator'},{n:'All 50 States',h:'/states'}]},
+              {title:'Resources',links:[{n:'Blog',h:'/blog'},{n:'About',h:'/about'},{n:'Contact Us',h:'/contact'},{n:'FAQ',h:'/faq'}]},
+              {title:'Legal',links:[{n:'Privacy Policy',h:'/privacy'},{n:'Terms & Conditions',h:'/terms'},{n:'Disclaimer',h:'/disclaimer'}]},
+            ].map(col=>(
               <div key={col.title}>
-                <h4 style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>{col.title}</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {col.links.map(link => (
-                    <Link key={link.href} href={link.href} style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget.style.color = 'white')}
-                      onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.5)')}>
-                      {link.name}
-                    </Link>
-                  ))}
-                </div>
+                <h4 style={{fontSize:'11px',fontWeight:'700',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'10px'}}>{col.title}</h4>
+                {col.links.map(l=>(
+                  <Link key={l.h} href={l.h} style={{display:'block',fontSize:'13px',color:'rgba(255,255,255,0.5)',textDecoration:'none',marginBottom:'6px'}}
+                    onMouseEnter={e=>(e.currentTarget.style.color='white')} onMouseLeave={e=>(e.currentTarget.style.color='rgba(255,255,255,0.5)')}>
+                    {l.n}
+                  </Link>
+                ))}
               </div>
             ))}
           </div>
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '24px', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', margin: 0 }}>
-              © 2026 WagePilot. Tax data sourced from IRS &amp; HMRC. Not professional tax advice.
-            </p>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              {['Privacy', 'Terms', 'Disclaimer'].map(item => (
-                <Link key={item} href={`/${item.toLowerCase()}`} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', textDecoration: 'none' }}>{item}</Link>
+          <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:'20px',display:'flex',flexWrap:'wrap',gap:'12px',justifyContent:'space-between',alignItems:'center'}}>
+            <p style={{fontSize:'12px',color:'rgba(255,255,255,0.3)',margin:0}}>© {new Date().getFullYear()} WagePilot. Tax data from IRS & HMRC. Not professional tax advice.</p>
+            <div style={{display:'flex',gap:'16px'}}>
+              {[{n:'Privacy',h:'/privacy'},{n:'Terms',h:'/terms'},{n:'Disclaimer',h:'/disclaimer'}].map(l=>(
+                <Link key={l.h} href={l.h} style={{fontSize:'12px',color:'rgba(255,255,255,0.35)',textDecoration:'none'}}>{l.n}</Link>
               ))}
             </div>
           </div>
         </div>
       </footer>
-
     </div>
   )
 }
