@@ -1,108 +1,91 @@
-import { ContractorCalculator } from '@/components/calculators/ContractorCalculator'
-import { loadUSTaxData } from '@/lib/tax'
-import { generateCalculatorSchema, generateFAQSchema, generateBreadcrumbSchema } from '@/lib/schema'
-import { AdSlot } from '@/components/ads/AdSlot'
-import { FAQSection } from '@/components/home/FAQSection'
-import type { Metadata } from 'next'
-import type { FAQItem } from '@/types'
-
-export const metadata: Metadata = {
-  title: 'Contractor Tax Calculator 2025 – Self-Employment Tax & Quarterly Estimates | WagePilot',
-  description:
-    'Free 1099 contractor tax calculator. Estimate self-employment tax, federal & state income tax, quarterly estimated payments, and net take-home pay for 2025.',
-  alternates: { canonical: '/contractor-calculator' },
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { SharedNav } from '@/components/layout/SharedNav'
+import { SharedFooter } from '@/components/layout/SharedFooter'
+const SR:Record<string,number>={TX:0,FL:0,WA:0,NV:0,CA:0.093,NY:0.0685,IL:0.0495,CO:0.044,GA:0.055,PA:0.0307,AZ:0.025,NC:0.0449,MA:0.05,VA:0.0575,OH:0.0399,MI:0.0425,OR:0.0875,NJ:0.0637}
+function calc(rev:number,exp:number,state:string,ret:number,health:number){
+  const net=Math.max(0,rev-exp),se=net*0.9235*0.153,seded=se*0.5
+  const agi=Math.max(0,net-seded-ret-health),taxable=Math.max(0,agi-15000)
+  const brk:any=[[11925,.10],[48475,.12],[103350,.22],[197300,.24],[250525,.32],[626350,.35],[Infinity,.37]]
+  let fed=0,p=0;for(const[l,r]of brk){if(taxable<=p)break;fed+=(Math.min(taxable,l)-p)*r;p=l}
+  const st=agi*(SR[state]||0),total=Math.round(se)+Math.round(fed)+Math.round(st)
+  return{net:Math.round(net),se:Math.round(se),fed:Math.round(fed),st:Math.round(st),total,takeHome:Math.round(rev-exp-total),quarterly:Math.round(total/4),eff:rev>0?(total/rev*100).toFixed(1):'0',monthly:Math.round((rev-exp-total)/12)}
 }
-
-const faqs: FAQItem[] = [
-  {
-    question: 'What is self-employment tax?',
-    answer:
-      'Self-employment tax covers Social Security (12.4%) and Medicare (2.9%) — totaling 15.3%. As a contractor, you pay both the employee and employer portions. However, you can deduct half of your SE tax (7.65%) from your gross income when calculating federal income tax.',
-  },
-  {
-    question: 'How do quarterly estimated tax payments work?',
-    answer:
-      'Self-employed individuals must pay estimated taxes four times per year: April 15 (Q1), June 15 (Q2), September 15 (Q3), and January 15 (Q4 of prior year). Failure to pay may result in an underpayment penalty. Generally, you must pay at least 90% of your current year tax or 100% of your prior year tax.',
-  },
-  {
-    question: 'What business expenses can I deduct?',
-    answer:
-      'Common deductible business expenses include: home office, equipment, software, internet, phone, travel, professional development, health insurance premiums, and retirement contributions (SEP-IRA up to 25% of net self-employment income, Solo 401k up to $69,000 for 2025). Keep all receipts.',
-  },
-  {
-    question: 'Should I form an LLC or S-Corp?',
-    answer:
-      'For most contractors, a sole proprietorship or single-member LLC (taxed the same way) is simplest. An S-Corp can save on self-employment tax when income exceeds ~$80,000–100,000/year, but requires additional administrative burden. Consult a CPA to evaluate your specific situation.',
-  },
-  {
-    question: 'What is the QBI deduction for contractors?',
-    answer:
-      'The Qualified Business Income (QBI) deduction (Section 199A) allows eligible self-employed individuals to deduct up to 20% of their qualified business income from federal taxable income. This deduction phases out for certain service businesses above income thresholds. Our calculator does not currently include QBI — consult a tax professional.',
-  },
-]
-
-export default async function ContractorCalculatorPage() {
-  const taxData = await loadUSTaxData(2025)
-
-  return (
-    <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(
-        generateCalculatorSchema({ name: 'WagePilot Contractor Calculator', description: 'Self-employment tax calculator for 1099 contractors.', url: '/contractor-calculator', calculatorType: 'contractor' })
-      )}} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(generateFAQSchema(faqs)) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(generateBreadcrumbSchema([
-        { name: 'Home', href: '/' }, { name: 'Calculators', href: '/calculators' }, { name: 'Contractor Calculator', href: '/contractor-calculator' }
-      ])) }} />
-
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <nav className="mb-6 text-sm text-muted-foreground">
-          <ol className="flex items-center gap-2">
-            <li><a href="/" className="hover:text-foreground">Home</a></li>
-            <li>/</li>
-            <li><a href="/calculators" className="hover:text-foreground">Calculators</a></li>
-            <li>/</li>
-            <li className="text-foreground">Contractor Calculator</li>
-          </ol>
-        </nav>
-
-        <div className="mb-8">
-          <h1 className="font-sora text-3xl font-bold tracking-tight sm:text-4xl">
-            1099 Contractor Tax Calculator 2025
-          </h1>
-          <p className="mt-3 max-w-2xl text-muted-foreground">
-            Calculate self-employment tax, income tax, and quarterly estimated payments as a
-            freelancer or independent contractor. Includes business expense deductions and
-            retirement contribution savings.
-          </p>
+function fmt(n:number){return'$'+Math.abs(n).toLocaleString()}
+export default function ContractorPage(){
+  const[rev,setRev]=useState(120000);const[exp,setExp]=useState(20000);const[state,setState]=useState('CA');const[ret,setRet]=useState(0);const[health,setHealth]=useState(0)
+  const[r,setR]=useState(calc(120000,20000,'CA',0,0))
+  useEffect(()=>{setR(calc(rev,exp,state,ret,health))},[rev,exp,state,ret,health])
+  const inp={width:'100%',border:'1px solid #e2e8f0',borderRadius:'10px',padding:'10px 12px',fontSize:'14px',color:'#0f172a',outline:'none',background:'white',boxSizing:'border-box' as const}
+  return(
+    <div style={{background:'#f8fafc',minHeight:'100vh',fontFamily:'system-ui,sans-serif'}}>
+      <SharedNav/>
+      <div style={{maxWidth:'1000px',margin:'0 auto',padding:'32px 20px'}}>
+        <nav style={{fontSize:'13px',color:'#94a3b8',marginBottom:'20px'}}><Link href="/" style={{color:'#94a3b8',textDecoration:'none'}}>Home</Link>{' / '}<span style={{color:'#0f172a'}}>Contractor Tax Calculator</span></nav>
+        <h1 style={{fontSize:'clamp(1.6rem,4vw,2.2rem)',fontWeight:'800',color:'#0f172a',margin:'0 0 8px'}}>💼 1099 Contractor Tax Calculator</h1>
+        <p style={{color:'#64748b',fontSize:'15px',marginBottom:'28px'}}>Calculate self-employment tax, income tax, and quarterly estimates.</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:'20px'}}>
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #e2e8f0',padding:'24px'}}>
+            <h2 style={{fontSize:'1rem',fontWeight:'700',color:'#0f172a',marginBottom:'20px'}}>Your Income & Expenses</h2>
+            {[{l:'Annual Revenue',v:rev,s:setRev,max:1000000},{l:'Business Expenses',v:exp,s:setExp,max:500000}].map(f=>(
+              <div key={f.l} style={{marginBottom:'16px'}}>
+                <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>{f.l}: {fmt(f.v)}</label>
+                <div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8',fontWeight:'600'}}>$</span>
+                <input type="number" value={f.v} onChange={e=>f.s(Number(e.target.value))} min={0} style={{...inp,paddingLeft:'28px'}}/></div>
+                <input type="range" min={0} max={f.max} step={5000} value={f.v} onChange={e=>f.s(Number(e.target.value))} style={{width:'100%',marginTop:'6px',accentColor:'#3b82f6'}}/>
+              </div>
+            ))}
+            <div style={{marginBottom:'16px'}}>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>State</label>
+              <select value={state} onChange={e=>setState(e.target.value)} style={inp}>
+                {Object.entries({CA:'California',TX:'Texas',NY:'New York',FL:'Florida',WA:'Washington',NV:'Nevada',IL:'Illinois',CO:'Colorado',GA:'Georgia',PA:'Pennsylvania',AZ:'Arizona',NC:'North Carolina',MA:'Massachusetts',VA:'Virginia',OH:'Ohio',OR:'Oregon',NJ:'New Jersey'}).map(([c,n])=><option key={c} value={c}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{background:'#f8fafc',borderRadius:'10px',padding:'14px',border:'1px solid #e2e8f0'}}>
+              <p style={{fontSize:'12px',fontWeight:'700',color:'#64748b',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'12px'}}>Deductions (Optional)</p>
+              <div style={{marginBottom:'10px'}}>
+                <label style={{display:'block',fontSize:'12px',fontWeight:'600',color:'#64748b',marginBottom:'5px'}}>SEP-IRA / Solo 401(k): {fmt(ret)}</label>
+                <input type="range" min={0} max={69000} step={1000} value={ret} onChange={e=>setRet(Number(e.target.value))} style={{width:'100%',accentColor:'#3b82f6'}}/>
+              </div>
+              <div>
+                <label style={{display:'block',fontSize:'12px',fontWeight:'600',color:'#64748b',marginBottom:'5px'}}>Health Insurance: {fmt(health)}</label>
+                <input type="range" min={0} max={30000} step={500} value={health} onChange={e=>setHealth(Number(e.target.value))} style={{width:'100%',accentColor:'#3b82f6'}}/>
+              </div>
+            </div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+            <div style={{background:'linear-gradient(135deg,#2563eb,#06b6d4)',borderRadius:'16px',padding:'24px',color:'white'}}>
+              <p style={{margin:'0 0 4px',fontSize:'12px',opacity:.8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Annual Net Take-Home</p>
+              <p style={{margin:'0 0 4px',fontSize:'2.4rem',fontWeight:'900',lineHeight:1}}>{fmt(r.takeHome)}</p>
+              <p style={{margin:0,fontSize:'13px',opacity:.8}}>{fmt(r.monthly)}/mo · Effective Rate: {r.eff}%</p>
+            </div>
+            <div style={{background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',overflow:'hidden'}}>
+              <div style={{padding:'14px 18px',borderBottom:'1px solid #e2e8f0',fontWeight:'700',fontSize:'14px',color:'#0f172a'}}>Tax Breakdown</div>
+              {[{l:'Gross Revenue',v:rev},{l:'Business Expenses',v:-exp},{l:'Net SE Income',v:r.net,b:true},{l:'SE Tax (15.3%)',v:-r.se},{l:'Federal Income Tax',v:-r.fed},{l:'State Income Tax',v:-r.st},{l:'🎉 Net Take-Home',v:r.takeHome,h:true}].map((row:any,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'10px 18px',borderBottom:'1px solid #f1f5f9',background:row.h?'#f0fdf4':row.b?'#f8fafc':'white'}}>
+                  <span style={{fontSize:'13px',color:row.h?'#166534':'#64748b',fontWeight:row.h||row.b?'700':'400'}}>{row.l}</span>
+                  <span style={{fontSize:'13px',fontWeight:'700',color:row.h?'#16a34a':row.v<0?'#ef4444':'#0f172a'}}>{row.v<0?`−${fmt(Math.abs(row.v))}`:fmt(row.v)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:'12px',padding:'16px'}}>
+              <h3 style={{fontSize:'14px',fontWeight:'700',color:'#92400e',marginBottom:'6px'}}>⚠️ Quarterly Estimated Tax</h3>
+              <div style={{fontSize:'2rem',fontWeight:'900',color:'#d97706',marginBottom:'6px'}}>{fmt(r.quarterly)}</div>
+              <p style={{fontSize:'12px',color:'#78350f',margin:0,lineHeight:1.6}}>Due: Apr 15 · Jun 15 · Sep 15 · Jan 15<br/>Pay to avoid IRS underpayment penalty.</p>
+            </div>
+          </div>
         </div>
-
-        <ContractorCalculator taxData={taxData} />
-
-        <AdSlot slot="in-content" className="my-10" />
-
-        <div className="mt-12 prose prose-gray dark:prose-invert max-w-none">
-          <h2>How Contractor Taxes Work in 2025</h2>
-          <p>
-            As a 1099 contractor, you are responsible for paying your own taxes — no employer
-            withholds on your behalf. This means budgeting for self-employment tax (15.3% on
-            net earnings up to the Social Security wage base), federal income tax, and state
-            income tax.
-          </p>
-          <p>
-            The good news: you can deduct legitimate business expenses, half your SE tax, health
-            insurance premiums, and retirement contributions — significantly reducing your taxable income.
-          </p>
-
-          <h2>2025 Self-Employment Tax Details</h2>
-          <p>
-            Self-employment tax applies to 92.35% of your net self-employment income. The 2025
-            Social Security wage base is $176,100 — income above this is subject only to the
-            2.9% Medicare portion (plus 0.9% additional Medicare for high earners).
-          </p>
+        <div style={{marginTop:'20px',background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',padding:'18px'}}>
+          <h3 style={{fontSize:'14px',fontWeight:'700',color:'#0f172a',marginBottom:'10px'}}>Related Calculators</h3>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+            {[{name:'💰 Salary Calculator',href:'/salary-calculator'},{name:'⏰ Overtime',href:'/overtime-calculator'},{name:'🇬🇧 UK Tax',href:'/uk-income-tax-calculator'}].map(c=>(
+              <Link key={c.href} href={c.href} style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',padding:'7px 14px',textDecoration:'none',fontSize:'13px',fontWeight:'600',color:'#2563eb'}}>{c.name}</Link>
+            ))}
+          </div>
         </div>
-
-        <FAQSection faqs={faqs} />
       </div>
-    </>
+      <SharedFooter/>
+    </div>
   )
 }
