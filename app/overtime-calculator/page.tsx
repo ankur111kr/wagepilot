@@ -1,114 +1,98 @@
-import { OvertimeCalculator } from '@/components/calculators/OvertimeCalculator'
-import { loadUSTaxData } from '@/lib/tax'
-import { generateCalculatorSchema, generateFAQSchema, generateBreadcrumbSchema } from '@/lib/schema'
-import { AdSlot } from '@/components/ads/AdSlot'
-import { FAQSection } from '@/components/home/FAQSection'
-import type { Metadata } from 'next'
-import type { FAQItem } from '@/types'
-
-export const metadata: Metadata = {
-  title: 'Overtime Calculator 2025 – Calculate Overtime Pay & Taxes | WagePilot',
-  description:
-    'Free overtime pay calculator with tax estimates. Calculate 1.5×, 2×, or custom overtime rates plus federal and state tax impact. Updated for 2025.',
-  alternates: { canonical: '/overtime-calculator' },
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { SharedNav } from '@/components/layout/SharedNav'
+import { SharedFooter } from '@/components/layout/SharedFooter'
+const SR:Record<string,number>={TX:0,FL:0,WA:0,NV:0,CA:0.093,NY:0.0685,IL:0.0495,CO:0.044,GA:0.055,PA:0.0307,AZ:0.025,NC:0.0449,MA:0.05,VA:0.0575,OH:0.0399,MI:0.0425,OR:0.0875,NJ:0.0637}
+function calc(rh:number,oh:number,rate:number,mul:number,state:string){
+  const rp=rh*rate,op=oh*rate*mul,gross=rp+op
+  const ann=gross*52,taxable=Math.max(0,ann-15000)
+  const brk:any=[[11925,.10],[48475,.12],[103350,.22],[197300,.24],[250525,.32],[626350,.35],[Infinity,.37]]
+  let fed=0,p=0;for(const[l,r]of brk){if(taxable<=p)break;fed+=(Math.min(taxable,l)-p)*r;p=l}
+  const fs=fed/52,ss=(SR[state]||0)*ann/52,fica=(Math.min(ann,176100)*0.062+ann*0.0145)/52
+  return{rp:Math.round(rp),op:Math.round(op),gross:Math.round(gross),net:Math.round(gross-fs-ss-fica),fs:Math.round(fs),ss:Math.round(ss),fica:Math.round(fica),annGross:Math.round(ann),annNet:Math.round((gross-fs-ss-fica)*52)}
 }
-
-const faqs: FAQItem[] = [
-  {
-    question: 'How is overtime calculated under the FLSA?',
-    answer:
-      'Under the Fair Labor Standards Act (FLSA), non-exempt employees must receive overtime pay of at least 1.5× their regular rate for all hours worked over 40 in a workweek. Some states (like California) have daily overtime rules — 1.5× after 8 hours/day and 2× after 12 hours/day.',
-  },
-  {
-    question: 'Is overtime taxed at a higher rate?',
-    answer:
-      'Overtime pay is not taxed at a separate, higher rate. However, because it increases your total income, it may push more of your earnings into a higher federal or state tax bracket, resulting in a higher effective tax rate for that pay period.',
-  },
-  {
-    question: 'Which states have daily overtime rules?',
-    answer:
-      'California, Nevada, and a few other states require overtime pay based on daily hours, not just weekly. California requires 1.5× pay after 8 hours/day, 2× after 12 hours/day, and 2× for the 7th consecutive day worked.',
-  },
-  {
-    question: 'Do salaried employees get overtime?',
-    answer:
-      'Salaried employees earning less than $684/week ($35,568/year) are generally entitled to overtime under the FLSA. Those earning above the threshold may be exempt depending on their job duties (executive, administrative, professional, outside sales, or computer employee exemptions).',
-  },
-  {
-    question: 'How do I calculate my effective overtime rate?',
-    answer:
-      'Your effective overtime rate is your overtime pay divided by total hours worked. For a 1.5× multiplier on $25/hr, overtime hours pay $37.50/hr before taxes. After estimated taxes, the net rate per overtime hour is typically 25–35% less.',
-  },
-]
-
-export default async function OvertimeCalculatorPage() {
-  const taxData = await loadUSTaxData(2025)
-
-  const schemas = [
-    generateCalculatorSchema({
-      name: 'WagePilot Overtime Calculator',
-      description: 'Calculate overtime pay and its tax impact for 2025.',
-      url: '/overtime-calculator',
-      calculatorType: 'overtime',
-    }),
-    generateFAQSchema(faqs),
-    generateBreadcrumbSchema([
-      { name: 'Home', href: '/' },
-      { name: 'Calculators', href: '/calculators' },
-      { name: 'Overtime Calculator', href: '/overtime-calculator' },
-    ]),
-  ]
-
-  return (
-    <>
-      {schemas.map((s, i) => (
-        <script key={i} type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(s) }} />
-      ))}
-
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <nav className="mb-6 text-sm text-muted-foreground">
-          <ol className="flex items-center gap-2">
-            <li><a href="/" className="hover:text-foreground">Home</a></li>
-            <li>/</li>
-            <li><a href="/calculators" className="hover:text-foreground">Calculators</a></li>
-            <li>/</li>
-            <li className="text-foreground">Overtime Calculator</li>
-          </ol>
-        </nav>
-
-        <div className="mb-8">
-          <h1 className="font-sora text-3xl font-bold tracking-tight sm:text-4xl">
-            Overtime Pay Calculator 2025
-          </h1>
-          <p className="mt-3 max-w-2xl text-muted-foreground">
-            Calculate your weekly overtime pay at 1.5×, 2×, or any custom multiplier. Includes
-            estimated federal and state tax impact and annual projections.
-          </p>
+function fmt(n:number){return'$'+Math.abs(n).toLocaleString()}
+export default function OvertimePage(){
+  const[rh,setRh]=useState(40);const[oh,setOh]=useState(10);const[rate,setRate]=useState(25);const[mul,setMul]=useState(1.5);const[state,setState]=useState('TX')
+  const[r,setR]=useState(calc(40,10,25,1.5,'TX'))
+  useEffect(()=>{setR(calc(rh,oh,rate,mul,state))},[rh,oh,rate,mul,state])
+  const inp={width:'100%',border:'1px solid #e2e8f0',borderRadius:'10px',padding:'10px 12px',fontSize:'14px',color:'#0f172a',outline:'none',background:'white',boxSizing:'border-box' as const}
+  return(
+    <div style={{background:'#f8fafc',minHeight:'100vh',fontFamily:'system-ui,sans-serif'}}>
+      <SharedNav/>
+      <div style={{maxWidth:'1000px',margin:'0 auto',padding:'32px 20px'}}>
+        <nav style={{fontSize:'13px',color:'#94a3b8',marginBottom:'20px'}}><Link href="/" style={{color:'#94a3b8',textDecoration:'none'}}>Home</Link>{' / '}<span style={{color:'#0f172a'}}>Overtime Calculator</span></nav>
+        <h1 style={{fontSize:'clamp(1.6rem,4vw,2.2rem)',fontWeight:'800',color:'#0f172a',margin:'0 0 8px'}}>⏰ Overtime Pay Calculator</h1>
+        <p style={{color:'#64748b',fontSize:'15px',marginBottom:'28px'}}>Calculate overtime at 1.5×, 2×, or custom rates with estimated tax.</p>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:'20px'}}>
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #e2e8f0',padding:'24px'}}>
+            <h2 style={{fontSize:'1rem',fontWeight:'700',color:'#0f172a',marginBottom:'20px'}}>Overtime Details</h2>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'16px'}}>
+              <div><label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Regular Hours</label><input type="number" value={rh} onChange={e=>setRh(Number(e.target.value))} min={1} max={168} style={inp}/></div>
+              <div><label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>OT Hours</label><input type="number" value={oh} onChange={e=>setOh(Number(e.target.value))} min={0} max={100} style={inp}/></div>
+            </div>
+            <div style={{marginBottom:'16px'}}>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>Hourly Rate: {fmt(rate)}/hr</label>
+              <div style={{position:'relative'}}><span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',color:'#94a3b8',fontWeight:'600'}}>$</span><input type="number" value={rate} onChange={e=>setRate(Number(e.target.value))} min={7.25} step={0.25} style={{...inp,paddingLeft:'28px'}}/></div>
+              <input type="range" min={7.25} max={200} step={0.25} value={rate} onChange={e=>setRate(Number(e.target.value))} style={{width:'100%',marginTop:'8px',accentColor:'#3b82f6'}}/>
+            </div>
+            <div style={{marginBottom:'16px'}}>
+              <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'0.04em'}}>OT Multiplier</label>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}}>
+                {[1.5,2.0,2.5].map(m=>(
+                  <button key={m} onClick={()=>setMul(m)} style={{padding:'9px',borderRadius:'8px',border:`1px solid ${mul===m?'#3b82f6':'#e2e8f0'}`,background:mul===m?'#eff6ff':'white',color:mul===m?'#2563eb':'#64748b',fontSize:'13px',fontWeight:'700',cursor:'pointer'}}>
+                    {m}×{m===1.5?' (Std)':m===2?' (2×)':' (2.5×)'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div><label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#64748b',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'}}>State</label>
+            <select value={state} onChange={e=>setState(e.target.value)} style={inp}>
+              {Object.entries({TX:'Texas',FL:'Florida',CA:'California',NY:'New York',WA:'Washington',NV:'Nevada',IL:'Illinois',CO:'Colorado',GA:'Georgia',PA:'Pennsylvania',AZ:'Arizona',NC:'North Carolina',MA:'Massachusetts',VA:'Virginia',OH:'Ohio',MI:'Michigan',OR:'Oregon',NJ:'New Jersey'}).map(([c,n])=><option key={c} value={c}>{n}</option>)}
+            </select></div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
+              {[{l:'Regular Pay',v:r.rp,c:'#3b82f6'},{l:'Overtime Pay',v:r.op,c:'#f59e0b'},{l:'Gross Weekly',v:r.gross,c:'#0f172a'},{l:'🎉 Net Weekly',v:r.net,c:'#10b981'}].map((c:any)=>(
+                <div key={c.l} style={{background:'white',borderRadius:'12px',border:'1px solid #e2e8f0',padding:'14px',textAlign:'center'}}>
+                  <div style={{fontSize:'11px',color:'#94a3b8',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'0.04em'}}>{c.l}</div>
+                  <div style={{fontSize:'1.4rem',fontWeight:'900',color:c.c}}>{fmt(c.v)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',overflow:'hidden'}}>
+              <div style={{padding:'14px 18px',borderBottom:'1px solid #e2e8f0',fontWeight:'700',fontSize:'14px',color:'#0f172a'}}>Weekly Breakdown</div>
+              {[{l:`Regular (${rh}h × ${fmt(rate)})`,v:r.rp},{l:`Overtime (${oh}h × ${fmt(rate*mul)})`,v:r.op},{l:'Gross Pay',v:r.gross,b:true},{l:'Federal Tax (est.)',v:-r.fs},{l:'State Tax (est.)',v:-r.ss},{l:'FICA (est.)',v:-r.fica},{l:'🎉 Net Take-Home',v:r.net,h:true}].map((row:any,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'10px 18px',borderBottom:'1px solid #f1f5f9',background:row.h?'#f0fdf4':'white'}}>
+                  <span style={{fontSize:'13px',color:row.h?'#166534':'#64748b',fontWeight:row.h||row.b?'700':'400'}}>{row.l}</span>
+                  <span style={{fontSize:'13px',fontWeight:'700',color:row.h?'#16a34a':row.v<0?'#ef4444':'#0f172a'}}>{row.v<0?`−${fmt(Math.abs(row.v))}`:fmt(row.v)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{background:'#f8fafc',borderRadius:'12px',border:'1px solid #e2e8f0',padding:'16px'}}>
+              <h3 style={{fontSize:'13px',fontWeight:'700',color:'#0f172a',marginBottom:'10px'}}>Annual Projection (52 weeks)</h3>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                {[{l:'Gross Annual',v:r.annGross},{l:'Net Annual',v:r.annNet}].map(c=>(
+                  <div key={c.l} style={{background:'white',borderRadius:'8px',padding:'10px',textAlign:'center',border:'1px solid #e2e8f0'}}>
+                    <div style={{fontSize:'10px',color:'#94a3b8',marginBottom:'3px',textTransform:'uppercase'}}>{c.l}</div>
+                    <div style={{fontSize:'1.1rem',fontWeight:'800',color:'#0f172a'}}>{fmt(c.v)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-
-        <OvertimeCalculator taxData={taxData} />
-
-        <AdSlot slot="in-content" className="my-10" />
-
-        <div className="mt-12 prose prose-gray dark:prose-invert max-w-none">
-          <h2>Federal Overtime Rules (FLSA 2025)</h2>
-          <p>
-            The Fair Labor Standards Act requires most employers to pay non-exempt employees
-            at least 1.5× their regular rate for hours worked over 40 per week. The salary
-            threshold for overtime exemption is $684/week ($35,568/year). Employees below
-            this threshold are entitled to overtime regardless of job duties.
-          </p>
-
-          <h2>State Overtime Laws</h2>
-          <p>
-            Several states have overtime rules that exceed federal minimums. California requires
-            daily overtime (1.5× after 8 hours, 2× after 12 hours). Alaska, Nevada, and Puerto
-            Rico also have daily overtime provisions. Always check your state's labor laws.
-          </p>
+        <div style={{marginTop:'20px',background:'white',borderRadius:'14px',border:'1px solid #e2e8f0',padding:'18px'}}>
+          <h3 style={{fontSize:'14px',fontWeight:'700',color:'#0f172a',marginBottom:'10px'}}>Related Calculators</h3>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+            {[{name:'💰 Salary Calculator',href:'/salary-calculator'},{name:'🕐 Hourly→Salary',href:'/hourly-to-salary-calculator'},{name:'💼 Contractor',href:'/contractor-calculator'}].map(c=>(
+              <Link key={c.href} href={c.href} style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',padding:'7px 14px',textDecoration:'none',fontSize:'13px',fontWeight:'600',color:'#2563eb'}}>{c.name}</Link>
+            ))}
+          </div>
         </div>
-
-        <FAQSection faqs={faqs} />
       </div>
-    </>
+      <SharedFooter/>
+    </div>
   )
 }
