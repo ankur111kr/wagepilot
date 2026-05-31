@@ -30,7 +30,7 @@ export default function NotFound() {
             <div style={{ fontSize: 'clamp(80px, 20vw, 140px)', fontWeight: '900', lineHeight: 1, background: 'linear-gradient(135deg,#3b82f6,#06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.05em' }}>
               404
             </div>
-            <div style={{ fontSize: '48px', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.15, fontSize: '160px', pointerEvents: 'none' }}>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.08, fontSize: '160px', pointerEvents: 'none', lineHeight: 1 }}>
               💰
             </div>
           </div>
@@ -40,11 +40,11 @@ export default function NotFound() {
             Oops! Page Not Found
           </h1>
           <p style={{ fontSize: '16px', color: 'rgba(255,255,255,0.55)', margin: '0 0 36px', lineHeight: 1.7 }}>
-            The page you are looking for doesn't exist or may have been moved.
-            Let's get you back on track!
+            The page you are looking for does not exist or may have been moved.
+            Let us get you back on track!
           </p>
 
-          {/* Primary CTA */}
+          {/* CTA buttons */}
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '48px' }}>
             <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'linear-gradient(135deg,#3b82f6,#06b6d4)', color: 'white', padding: '13px 28px', borderRadius: '12px', textDecoration: 'none', fontSize: '15px', fontWeight: '700', boxShadow: '0 8px 24px rgba(59,130,246,0.3)' }}>
               🏠 Go to Homepage
@@ -69,8 +69,8 @@ export default function NotFound() {
                 { emoji: '📊', label: 'Salary Comparison', href: '/salary-comparison' },
               ].map(item => (
                 <Link key={item.href} href={item.href}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', color: 'rgba(255,255,255,0.75)', fontSize: '13px', fontWeight: '500', transition: 'background 0.15s' }}>
-                  <span style={{ fontSize: '16px' }}>{item.emoji}</span>
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', color: 'rgba(255,255,255,0.75)', fontSize: '13px', fontWeight: '500' }}>
+                  <span>{item.emoji}</span>
                   {item.label}
                 </Link>
               ))}
@@ -90,7 +90,7 @@ export default function NotFound() {
       {/* Footer */}
       <footer style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '20px 24px', display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
-          © {new Date().getFullYear()} WagePilot. Free salary & tax calculators for USA & UK.
+          © {new Date().getFullYear()} WagePilot — Free salary & tax calculators for USA & UK.
         </p>
         <div style={{ display: 'flex', gap: '16px' }}>
           {[{ n: 'Home', h: '/' }, { n: 'Privacy', h: '/privacy' }, { n: 'Terms', h: '/terms' }, { n: 'Contact', h: '/contact' }].map(l => (
@@ -98,6 +98,8 @@ export default function NotFound() {
           ))}
         </div>
       </footer>
+
     </div>
   )
-}
+        }
+          
